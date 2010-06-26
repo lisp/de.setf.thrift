@@ -1,0 +1,21 @@
+
+Common Lisp Thrift Bindings
+
+Author: Patrick Collison <patrick@collison.ie>
+
+- Depends on ACL for reading/writing floats
+- Requires ASDF with usocket and trivial-utf-8
+
+Sample usage:
+
+(defclass calculator-client (thrift::client) ())
+
+(let ((calc (thrift:binary-client 'calculator-client "127.0.0.1" 9090)))
+  (print `(1 + 1 is ,(add calc 1 2))))
+
+(defmethod add ((h calculator-client) num1 num2)
+  (format t "~&Asked to add ~A and ~A" num1 num2)
+  (+ num1 num2))
+
+(let ((srv (thrift:simple-server "127.0.0.1" 9090)))
+  (thrift:serve srv 'calculator-client))
