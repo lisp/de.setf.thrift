@@ -81,11 +81,11 @@ one must also define the actual functions to which Thrift is to act as the proxy
 interface. The remainder of this document follows the Thrift tutorial to illustrate how
 to perform the steps
 
-    * implement the service
-    * translate the Thrift IDL
-    * load the Lisp service interfaces
-    * run a server for the service
-    * use a client to access the service remotely
+  * implement the service
+  * translate the Thrift IDL
+  * load the Lisp service interfaces
+  * run a server for the service
+  * use a client to access the service remotely
 
 Note that, if one is to implement a new service, one will also need to author the
 IDL files, as there is no facility to generate them from a service implementation.
@@ -94,8 +94,9 @@ IDL files, as there is no facility to generate them from a service implementatio
 Implement the Service
 ---------------------
 
-The tutorial comprises serveral functions: `add`, `ping, `zip`, and `calculate`.
+The tutorial comprises serveral functions: `add`, `ping`, `zip`, and `calculate`.
 Each translatd IDL corresponds to three packages. In this case, the packages
+
   * :tutorial
   * :tutorial-request
   * :tutorial-response
