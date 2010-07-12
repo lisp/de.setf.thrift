@@ -48,14 +48,15 @@ Using Trift with Common Lisp
 
  The client interface is one operator
 
-  * with-client (variable location) . body : creates a connection in a dynamic context and closes it
+  * `with-client (variable location) . body` : creates a connection in a dynamic context and closes it
     upon exit. The variable is bound to a client proxy stream/protocol instance, which wraps the
     base i/o stream - socket, file, etc, with an operators which implement the Thrift protocol
     and transport mechanisms.
 
  The server interface combines server and service objects
 
-  * serve (location service)
+  * `serve (location service)` : accepts connections on the designated port and responds to
+    requests of the service's operations.
 
 
 Building 
