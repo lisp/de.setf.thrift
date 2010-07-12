@@ -29,14 +29,16 @@ Using Trift with Common Lisp
  processes. The communication takes the form of request and response messages, of which the forms
  are specified in advance throufh a shared interface definition. A Thrift definition file is translated
  into Lisp source files, which comprise several definitions:
+
   * Three packages, one for the namespace of the implementation operators, and one each for request and
-    response operators.
+  response operators.
   * Various type definitions as implementations for Thrift typedef and enum definitions.
   * DEF-STRUCT and DEF-EXCEPTION forms for Thrift struct and exception definitions.
   * DEF-SERVICE forms for thrift service definitions.
 
  Each service definition expands in a collection of generic function definitions. For each `op`
  in the service definition, two functions are defined
+
   * `op`-request is defined for use by a client. It accepts an additional initial `protocol` argument,
     to act as the client proxy for the operation and mediate the interaction with a remote process
     through a Thrift-encoded transport stream.
@@ -45,12 +47,14 @@ Using Trift with Common Lisp
     encode and send the the result as a response, and handles exceptions.
 
  The client interface is one operator
+
   * with-client (variable location) . body : creates a connection in a dynamic context and closes it
     upon exit. The variable is bound to a client proxy stream/protocol instance, which wraps the
     base i/o stream - socket, file, etc, with an operators which implement the Thrift protocol
     and transport mechanisms.
 
  The server interface combines server and service objects
+
   * serve (location service)
 
 
