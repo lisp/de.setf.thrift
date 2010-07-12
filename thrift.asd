@@ -1,16 +1,55 @@
-;;; -*- Mode: lisp; Syntax: ansi-common-lisp; Base: 10; Package: common-lisp; -*-
+;;; -*- Mode: lisp; Syntax: ansi-common-lisp; Base: 10; Package: common-lisp-user; -*-
 
-(asdf:defsystem :org.apache.thrift
-  :nicknames (:thrift)
-  :depends-on (:net.common-lisp.usocket
-               :net.common-lisp.closer-mop
-               :net.common-lisp.trivial-utf-8)
-  :description "thrift implement common-lisp binding for the apache thrift communication protocol."
+(in-package :common-lisp-user)
+
+
+;;; This files defines the ASDF system for the `org.apache.thrift` library.
+;;;
+;;; Licensed to the Apache Software Foundation (ASF) under one
+;;; or more contributor license agreements. See the NOTICE file
+;;; distributed with this work for additional information
+;;; regarding copyright ownership. The ASF licenses this file
+;;; to you under the Apache License, Version 2.0 (the
+;;; "License"); you may not use this file except in compliance
+;;; with the License. You may obtain a copy of the License at
+;;; 
+;;;   http://www.apache.org/licenses/LICENSE-2.0
+;;; 
+;;; Unless required by applicable law or agreed to in writing,
+;;; software distributed under the License is distributed on an
+;;; "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+;;; KIND, either express or implied. See the License for the
+;;; specific language governing permissions and limitations
+;;; under the License.
+
+
+(asdf:defsystem :thrift
+  :depends-on (:puri-ppcre       ; use this version to support thrift uri class
+               :usocket
+               :closer-mop 
+               :trivial-utf-8)
+  :description "org.apache.thrift implements a Common Lisp binding for the Apache Thrift cross-language
+ services protocol."
   :serial t
-  :components ((:file "thrift"))
+  :components ((:file "package")
+               (:file "symbols")
+               (:file "types")
+               (:file "parameters")
+               (:file "classes")
+               (:file "float")
+               (:file "definition-operators")
+               (:file "transport")
+               (:file "conditions")
+               (:file "protocol")
+               (:file "binary-protocol")
+               (:file "client")
+               (:file "server"))
 
   :long-description
-  "See : (among others)
+  "This library uses the  Thrift[[1]],[[2]] protocol to implement Common Lisp support for cross-language
+ access to remote services. See README.md for more information.
 
-   - [thrift lisp thread](http://markmail.org/thread/4tfa3zbweyg2qwne)
-   - [whitepaper](http://incubator.apache.org/thrift/static/thrift-20070401.pdf) : The whitepaper from the facebook authors")
+ [1]: http://incubator.apache.org/thrift/static/thrift-20070401.pdf
+ [2]: http://wiki.apache.org/thrift/
+ ")
+
