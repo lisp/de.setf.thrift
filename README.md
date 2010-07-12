@@ -148,6 +148,10 @@ As the former includes the latter, one uses it to generate the interfaces:
 
     $THRIFT/bin/thrift -O ./ --gen cl $THRIFT/tutorial/tutorial.thrift
 
+For the moment, the Lisp backend is present here as #P"THRIFT:compiler;cpp;src;generate;t_cl_generator.cc".
+In order to use it, copy that file into the analogous location in the Thrift release tree prior to
+making thrift.
+
 
 Load the Lisp translated service interfaces
 -------------------------------------------
