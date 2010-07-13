@@ -233,7 +233,7 @@
                                                 (error "No direct slot specified an id number: ~s." name)))
        (setf (slot-value sd 'reader) (or (some #'field-definition-reader direct-slots)
                                          (error "No direct slot specified a reader: ~s." name)))
-       (setf (slot-value sd 'reader) (some #'field-definition-optional direct-slots))))
+       (setf (slot-value sd 'optional) (some #'field-definition-optional direct-slots))))
     sd))
 
 
