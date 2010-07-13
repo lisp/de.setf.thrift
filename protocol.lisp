@@ -117,6 +117,49 @@
 ;;;
 ;;; macros
 
+(defmacro trace-macro (&rest names)
+  `(progn ,@(loop for name in names collect `(%trace-macro ',name))))
+(defmacro untrace-macro (&rest names)
+  `(progn ,@(loop for name in names collect `(%untrace-macro ',name))))
+
+(defun %trace-macro (name)
+  (let ((function nil))
+    (flet ((make-traced-expander (name function)
+             #'(lambda (form environment)
+                 (let ((expansion (funcall function form environment)))
+                   (unless (eq form expansion)
+                     (%format-macro-trace name form expansion))
+                   expansion))))
+      (cond ((or (get name 'macro-function) (get name 'compiler-macro-function))
+             name)
+            ((setf function (macro-function name))
+             (setf (get name 'macro-function) function)
+             (setf (macro-function name) (make-traced-expander name function))
+             name)
+            ((setf function (compiler-macro-function name))
+             (setf (get name 'compiler-macro-function) function)
+             (setf (compiler-macro-function name) (make-traced-expander name function))
+             name)
+            (t
+             (error "~a has no macro definition."))))))
+
+(defun %untrace-macro (name)
+  (let ((function nil))
+      (cond ((setf function (get name 'macro-function))
+             (setf (macro-function name) function)
+             (setf (get name 'macro-function) nil)
+             name)
+            ((setf function (get name 'compiler-macro-function))
+             (setf (compiler-macro-function name) function)
+             (setf (get name 'compiler-macro-function) nil)
+             name)
+            (t
+             nil))))
+
+(defun %format-macro-trace (name form expansion)
+  (declare (ignore name))
+  (format *trace-output* "~&~%~:w~%==>~%~:w" form expansion))
+
 (defmacro expand-iff-constant-types (type-variables form &body body)
   "Used in the codec compiler macros to conditionalize expansion on constant types."
   `(cond ((and ,@(loop for tv in type-variables collect `(typep ,tv '(cons (eql quote)))))
@@ -126,7 +169,6 @@
           ,form)))
 
 #+digitool (setf (ccl:assq 'expand-iff-constant-types ccl:*fred-special-indent-alist*) 2)
-
 
 
 ;;;
@@ -683,28 +725,15 @@
     (stream-write-field-stop protocol)
     (stream-write-struct-end protocol)))
 
-(defmethod stream-write-struct ((protocol protocol) (value hash-table) &optional (type (error "The class is required.")))
-  (let* ((class (find-thrift-class type))
-         (fields (class-field-definitions class)))
-    (stream-write-struct-begin protocol (class-identifier class))
-    (loop for id being each hash-key of value using (hash-value field-value)
-          do (let ((fd (or (find id fields :key #'field-definition-identifier-number)
-                           (error 'unknown-field protocol :id id))))
-               (stream-write-field protocol field-value
-                                   :identifier-number id
-                                   :identifier-name (field-definition-identifier fd)
-                                   :type (field-definition-type fd))))
-    (stream-write-field-stop protocol)
-    (stream-write-struct-end protocol)))
 
 (define-compiler-macro stream-write-struct (&whole form prot value &optional type &environment env)
   "Iff the type is a constant, emit the structure in-line. In this case allow also the variation, that the
- structure itself is an a-list of (id-number . place)."
+ structure itself is a thrift:list a-list of (id-number . place)."
   (expand-iff-constant-types (type) form
     (let* ((class (find-thrift-class type))
            (identifier (class-identifier class))
            (field-definitions (class-field-definitions class)))
-      (if (typep value '(cons (eql thrift:map)))
+      (if (typep value '(cons (eql thrift:list)))
         ;; if it's a literal environment, expand it in-line
         (with-optional-gensyms (prot) env
           `(progn (stream-write-struct-begin ,prot ,identifier)
