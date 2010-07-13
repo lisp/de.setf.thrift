@@ -95,6 +95,7 @@ void t_cl_generator::init_generator() {
   f_vars_ << cl_autogen_comment() << endl;
 
   package_def(f_types_, program_name_);
+  package_in(f_types_, program_name_);
   package_in(f_vars_, program_name_);
 }
 
@@ -134,8 +135,21 @@ string t_cl_generator::generated_package() {
   return program_->get_namespace("cpp");
 }
 
+/***
+ * Generate a package definition. Add use references equivalent to the idl file's include statements.
+ */
 void t_cl_generator::package_def(std::ofstream &out, string name) {
-  out << "(def-package :" << package() << ")" << endl << endl;
+  const vector<t_program*>& includes = program_->get_includes();
+
+  out << "(thrift:def-package :" << package();
+  if ( includes.size() > 0 ) {
+    out << " :use (";
+    for (size_t i = 0; i < includes.size(); ++i) {
+      out << " :" << includes[i]->get_name();
+    }
+    out << ")";
+  }
+  out << ")" << endl << endl;
 }
 
 void t_cl_generator::package_in(std::ofstream &out, string name) {
@@ -355,7 +369,8 @@ void t_cl_generator::generate_service(t_service* tservice) {
   indent_up();
 
   if ( tservice->has_doc()) {
-      f_types_ << "(:documentation \"" << cl_docstring(tservice->get_doc()) << "\")";
+      f_types_ << endl << indent()
+               << "(:documentation \"" << cl_docstring(tservice->get_doc()) << "\")";
     }
 
   for (f_iter = functions.begin(); f_iter != functions.end(); ++f_iter) {
