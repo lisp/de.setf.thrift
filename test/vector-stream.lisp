@@ -56,7 +56,7 @@
   ())
 
 
-(defun make-vector-stream-buffer (length &optional (type thrift::*binary-transport-element-type*))
+(defun make-vector-stream-buffer (length &optional (type *binary-transport-element-type*))
   (make-array length :element-type type :initial-element 0))
 
 (defmethod shared-initialize
@@ -89,7 +89,7 @@
       (funcall old-definition stream))))
 
 (defmethod stream-element-type ((stream vector-stream))
-  thrift::*binary-transport-element-type*)
+  *binary-transport-element-type*)
 
 (defmethod stream-position ((stream vector-stream) &optional new)
   (with-slots (vector) stream
@@ -151,7 +151,7 @@
     (unless (< (setf next (1+ position)) (length vector))
       (setf vector
             (adjust-array vector (+ next (floor (/ next 4)))
-                          :element-type thrift::*binary-transport-element-type*)))
+                          :element-type *binary-transport-element-type*)))
     (setf (aref vector position)
           (logand #xff datum))
     (setf position next)))
@@ -168,7 +168,7 @@
         (unless (< new-position (length vector))
           (setf vector
                 (adjust-array vector (floor (+ new-position (floor (/ new-position 4))))
-                              :element-type thrift::*binary-transport-element-type*)))
+                              :element-type *binary-transport-element-type*)))
         (replace vector sequence
                  :start1 position :end1 new-position
                  :start2 start :end2 end)

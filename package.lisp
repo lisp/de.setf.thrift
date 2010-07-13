@@ -36,6 +36,7 @@
                :string)
 
   (:export 
+   :*binary-transport-element-type*
    :application-error
    :binary-protocol
    :binary-transport
