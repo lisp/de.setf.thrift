@@ -119,7 +119,7 @@
     'bool)
   (:method ((value integer))
     (etypecase value
-     (i08 'byte)
+     (i08 'thrift:byte)
      (i16 'i16)
      (i32 'i32)
      (i64 'i64)))
@@ -150,3 +150,11 @@
       (struct (str-sym (second type-name)))
       ((thrift:list thrift:set) 'list)
       (thrift:map 'hash-table))))
+
+
+(defgeneric type-category (type)
+  (:documentation "Return the type name to match decoded values.")
+
+  (:method ((type symbol)) type)
+
+  (:method ((type cons)) (first type)))

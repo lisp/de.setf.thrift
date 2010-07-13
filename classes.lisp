@@ -65,14 +65,18 @@
   ()
   (:documentation "The abstract root class of all struct instances."))
 
-
 (defclass field-definition ()
   ((identifier
-    :initarg :identifier
+    :initarg :identifier :initarg :identifier-name
     :reader field-definition-identifier)
    (identifier-number
     :initarg :identifier-number
-    :reader field-definition-identifier-number)))
+    :reader field-definition-identifier-number)
+   (optional
+    :initarg :optional :initform nil
+    :reader field-definition-optional
+    :documentation "To be used to suppress unbound slots when serializing.
+     NYI, as the IDL translator does not provide the data.")))
    
 
 (defclass direct-field-definition (field-definition c2mop:standard-direct-slot-definition)
@@ -135,7 +139,11 @@
   (:documentation "Return a class registered by identifier name. If none is registered, if
  signal an error if errorp is true. Otherwise return nil.")
 
-  (:method ((name string) &optional (errorp t))
+  (:method ((identifier string) &optional (errorp t))
+    (warn "FIX ME: transform the identifier into a global name: ~s." identifier)
+    (find-thrift-class (str-sym identifier) errorp))
+
+  (:method ((name symbol) &optional (errorp t))
     (cond ((gethash name *thrift-classes*))
           (errorp
            (error "thrift-class not found: ~s" name)))))
@@ -144,10 +152,15 @@
 (defgeneric (setf find-thrift-class) (class name)
   (:documentation "Register a classe according to identifier string. Given nil, delete the entry.")
 
-  (:method ((class thrift-class) (name string))
+  (:method ((object t) (identifier string))
+    (warn "FIX ME: transform the identifier into a global name: ~s." identifier)
+    (setf (find-thrift-class (str-sym identifier)) object))
+  
+
+  (:method ((class thrift-class) (name symbol))
     (setf (gethash name *thrift-classes*) class))
 
-  (:method ((class null) (name string))
+  (:method ((class null) (name symbol))
     (remhash name *thrift-classes*)))
 
 
@@ -194,9 +207,9 @@
     identifier))
   
 
-(defmethod c2mop:direct-slot-definition-class ((class thrift-class) &key identifier)
+(defmethod c2mop:direct-slot-definition-class ((class thrift-class) &key identifier (identifier-name identifier))
   "If an id is present in the definition, the slot is included to pr included when de/serializing"
-  (cond (identifier
+  (cond (identifier-name
          (find-class 'direct-field-definition))
         (t
          (call-next-method))))
@@ -219,18 +232,44 @@
        (setf (slot-value sd 'identifier-number) (or (some #'field-definition-identifier-number direct-slots)
                                                 (error "No direct slot specified an id number: ~s." name)))
        (setf (slot-value sd 'reader) (or (some #'field-definition-reader direct-slots)
-                                         (error "No direct slot specified a reader: ~s." name)))))
+                                         (error "No direct slot specified a reader: ~s." name)))
+       (setf (slot-value sd 'reader) (some #'field-definition-optional direct-slots))))
     sd))
 
-(defgeneric field-definition-identifier (slot-definition)
-  (:method ((sd c2mop:slot-definition))
-    "Provide a base method which returns nil to permit filtering all definitions."
-    nil))
 
 (defgeneric field-definition-identifier (field-definition)
   (:method ((fd cl:list))
     ;; for use in macros
-    (first fd)))
+    (first fd))
+
+  (:method ((sd c2mop:slot-definition))
+    "Provide a base method which returns nil to permit filtering all definitions."
+    nil))
+
+
+(defgeneric field-definition-identifier-number (field-definition)
+  (:method ((fd cl:list))
+    ;; for use in macros
+    (getf (cddr fd) :id))
+
+  (:method ((sd c2mop:slot-definition))
+    "Provide a base method which returns nil to permit filtering all definitions."
+    nil))
+
+(defgeneric field-definition-optional (field-definition)
+  (:method ((fd cl:list))
+    ;; for use in macros
+    (getf (cddr fd) :optional))
+
+  (:method ((sd c2mop:slot-definition))
+    "Provide a base method which returns nil to permit filtering all definitions."
+    nil))
+  
+
+(defgeneric field-definition-initarg (field-definition)
+  (:method ((sd c2mop:slot-definition))
+    (first (c2mop:slot-definition-initargs sd))))
+
 
 (defgeneric field-definition-name (field-definition)
   (:method ((fd cl:list))
@@ -239,12 +278,16 @@
       (etypecase identifier
         (string (str-sym identifier))
         ;; allow for the gensym in the interposed result field
-        (symbol identifier)))))
+        (symbol identifier))))
 
-(defgeneric field-definition-identifier-number (field-definition)
-  (:method ((fd cl:list))
-    ;; for use in macros
-    (getf (cddr fd) :id)))
+  (:method ((sd c2mop:slot-definition))
+    (c2mop:slot-definition-name sd)))
+
+
+(defgeneric field-definition-reader (field-definition)
+  (:method ((sd c2mop:direct-slot-definition))
+    (first (c2mop:slot-definition-readers sd))))
+
 
 (defgeneric field-definition-type (field-definition)
   (:method ((fd cl:list))
@@ -252,18 +295,6 @@
     (getf (cddr fd) :type))
   (:method ((sd c2mop:slot-definition))
     (c2mop:slot-definition-type sd)))
-
-(defgeneric field-definition-name (field-definition)
-  (:method ((sd c2mop:slot-definition))
-    (c2mop:slot-definition-name sd)))
-
-(defgeneric field-definition-initarg (field-definition)
-  (:method ((sd c2mop:slot-definition))
-    (first (c2mop:slot-definition-initargs sd))))
-
-(defgeneric field-definition-reader (field-definition)
-  (:method ((sd c2mop:direct-slot-definition))
-    (first (c2mop:slot-definition-readers sd))))
 
 
 (defgeneric class-field-definitions (class)

@@ -24,7 +24,7 @@
 (test conditions/class-not-found-error
       (and (stringp (princ-to-string (make-condition 'class-not-found-error
                                                      :protocol (make-test-protocol)
-                                                     :name "UnknownClass")))
+                                                     :identifier "UnknownClass")))
            (typep (nth-value 1 (ignore-errors (class-not-found (make-test-protocol) "UnknownClass")))
                   'class-not-found-error)))
 
@@ -52,7 +52,7 @@
 (test conditions/field-size-error
       (and (stringp (princ-to-string (make-condition 'field-size-error
                                                      :protocol (make-test-protocol)
-                                                     :name "fieldex" :id -1
+                                                     :name "fieldex" :number -1
                                                      :datum most-negative-fixnum :expected-type `(integer 0 ,most-positive-fixnum))))
            (typep (nth-value 1 (ignore-errors (invalid-field-size (make-test-protocol) "fieldex" -1 `(integer 0 ,most-positive-fixnum) most-negative-fixnum)))
                   'field-size-error)))
@@ -60,21 +60,22 @@
 (test conditions/field-type-error
       (and (stringp (princ-to-string (make-condition 'field-type-error
                                                      :protocol (make-test-protocol)
-                                                     :structure-type 'test-struct :name "fieldex" :id 17 :expected-type 'bool :datum 12345)))
+                                                     :structure-type 'test-struct :name "fieldex" :number 17
+                                                     :expected-type 'bool :datum 12345)))
            (typep (nth-value 1 (ignore-errors (invalid-field-type (make-test-protocol) 'test-struct "fieldex" 17 'bool 12345)))
                   'field-type-error)))
 
 (test conditions/unknown-field-error
       (and (stringp (princ-to-string (make-condition 'unknown-field-error
                                                      :protocol (make-test-protocol)
-                                                     :structure-type 'test-struct :name "fieldex" :id 17 :datum 12345)))
+                                                     :structure-type 'test-struct :name "fieldex" :number 17 :datum 12345)))
            (typep (nth-value 1 (ignore-errors (unknown-field (make-test-protocol) 'test-struct 17 "fieldex" 12345)))
                   'null)))
 
 (test conditions/unknown-method-error
       (and (stringp (princ-to-string (make-condition 'unknown-method-error
                                                      :protocol (make-test-protocol)
-                                                     :name "methodex" :request t)))
+                                                     :identifier "methodex" :request t)))
            (typep (nth-value 1 (ignore-errors (unknown-method (make-test-protocol) "methodex" 12345 t)))
                   'unknown-method-error)))
 

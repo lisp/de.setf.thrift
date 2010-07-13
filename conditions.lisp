@@ -94,7 +94,9 @@
 ;;; concrete exceptions
 
 (define-condition class-not-found-error (protocol-error)
-  ((name :initarg :name :reader class-not-found-error-name)))
+  ((identifier
+    :initarg :identifier :reader class-not-found-error-identifier
+    :documentation "The external identifier name for the unknown class.")))
 
 (defmethod thrift-error-format-control ((error class-not-found-error))
   (concatenate 'string (call-next-method)
@@ -102,7 +104,7 @@
 
 (defmethod thrift-error-format-arguments ((error class-not-found-error))
   (append (call-next-method)
-          (list (class-not-found-error-name error))))
+          (list (class-not-found-error-identifier error))))
 
 
 
@@ -152,7 +154,7 @@
 
 (define-condition field-size-error (protocol-error type-error cell-error)
   ((type :initform *protocol-ex-size-limit*)
-   (id  :initarg :id :reader field-size-error-id))
+   (number  :initarg :identifier-number :reader field-size-error-number))
   (:default-initargs :expected-type 'field-size))
 
 (defmethod thrift-error-format-control ((error field-size-error))
@@ -161,7 +163,7 @@
 
 (defmethod thrift-error-format-arguments ((error field-size-error))
   (append (call-next-method)
-          (list (field-size-error-id error)
+          (list (field-size-error-number error)
                 (cell-error-name error) 
                 (type-error-datum error)
                 (type-error-expected-type error))))
@@ -171,7 +173,7 @@
 (define-condition field-type-error (protocol-error type-error cell-error)
   ((type :initform *protocol-ex-invalid-data*)
    (structure-type :initarg :structure-type :reader field-type-error-structure-type)
-   (id  :initarg :id :reader field-type-error-id)))
+   (number  :initarg :identifier-number :reader field-type-error-number)))
 
 (defmethod thrift-error-format-control ((error field-type-error))
   (concatenate 'string (call-next-method)
@@ -180,17 +182,34 @@
 (defmethod thrift-error-format-arguments ((error field-type-error))
   (append (call-next-method)
           (list (field-type-error-structure-type error)
-                (field-type-error-id error)
+                (field-type-error-number error)
                 (type-error-expected-type error) 
                 (cell-error-name error) 
                 (type-error-datum error))))
 
 
 
+(define-condition sequence-number-error (application-error)
+  ((type :initform *application-ex-bad-sequence-id*)
+   (number :initarg :number :reader sequence-number-error-number)
+   (expected-number :initarg :expected-number :reader sequence-number-error-expected-number)))
+  
+
+(defmethod thrift-error-format-control ((error sequence-number-error))
+  (concatenate 'string (call-next-method)
+               " sequence number does not match: ~s, expected ~s."))
+
+(defmethod thrift-error-format-arguments ((error protocol-version-error))
+  (append (call-next-method)
+          (list (sequence-number-error-number error) (sequence-number-error-expected-number error))))
+
+
+
+
 (define-condition unknown-field-error (protocol-error cell-error)
   ((type :initform *protocol-ex-invalid-data*)
    (structure-type :initarg :structure-type :reader unknown-field-error-structure-type)
-   (id  :initarg :id :reader unknown-field-error-id)
+   (number  :initarg :id :reader unknown-field-error-number)
    (datum :initarg :datum :reader unknown-field-error-datum)))
 
 (defmethod thrift-error-format-control ((error unknown-field-error))
@@ -200,7 +219,7 @@
 (defmethod thrift-error-format-arguments ((error unknown-field-error))
   (append (call-next-method)
           (list (unknown-field-error-structure-type error)
-                (unknown-field-error-id error) 
+                (unknown-field-error-number error) 
                 (cell-error-name error) 
                 (unknown-field-error-datum error))))
 
@@ -208,7 +227,7 @@
 
 (define-condition unknown-method-error (protocol-error )
   ((type :initform *application-ex-unknown-method*)
-   (name :initarg :name :reader unknown-method-error-name)
+   (identifier :initarg :identifier :reader unknown-method-error-identifier)
    (request :initarg :request :reader unknown-method-error-request)))
 
 (defmethod thrift-error-format-control ((error unknown-method-error))
@@ -217,7 +236,7 @@
 
 (defmethod thrift-error-format-arguments ((error unknown-method-error))
   (append (call-next-method)
-          (list (unknown-method-error-name error)
+          (list (unknown-method-error-identifier error)
                 (unknown-method-error-request error))))
 
 

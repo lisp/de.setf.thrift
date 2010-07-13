@@ -98,13 +98,25 @@
 
 (defparameter *whitespace* #(#\space #\tab #\linefeed #\return))
 
-(defvar *thrift-classes* (make-hash-table :test 'equal)
-  "Registers defined struct classes. The static value includes all classes with the
- class thrift-class, as defined by def-struct.")
 
-(defvar *thrift-prototype-class* nil
-  "When bound to a class, that class is returned by class-not-found, to be used to
- decode otherwise unknown struct data in prototype mode.")
+;;; the thrfit class registry binds class names (_not identifiers_) to either the
+;;; 
+(defvar *thrift-classes* (make-hash-table :test 'eq)
+  "Registers defined struct classes. This includes
+
+  * classes with the class thrift-struct-class, as defined by def-struct
+  * classes of the class thrift-exception-class, as defined by def-exception
+
+ The keys are the symbols which as named by the class identifier in the respective IDL def-* forms.
+ These respect the IDL file's package, whereby the .thrift -> .lisp translator qualifies any
+ cross-referenced names explicitly, which makes the (symbol x class) relation global.
+ (see str-sym and find-thrift-class.)
+
+ The values are either the struct class itself or, in the case of exceptions, the proxy exception
+ class. An exception class is keyed by the name of its respective condition and serves to
+ guide code operation and/or generation. Instantiation delegates to the actual condition class.
+ (see make-struct.)")
+
 
 ;;;
 ;;; floating point support

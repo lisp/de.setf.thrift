@@ -27,7 +27,7 @@
 ;;; classes
 
 (defclass binary-protocol (encoded-protocol)
-  ((field-key :initform :number :allocation :class))
+  ((field-id-mode :initform :identifier-number :allocation :class))
   (:default-initargs
     :version-id #x80
     :version-number #x01))

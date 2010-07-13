@@ -92,14 +92,14 @@
 (defgeneric stream-write-string (protocol value))
 (defgeneric stream-write-binary (protocol value))
 
-(defgeneric stream-write-message-begin (protocol name type seq))
-(defgeneric stream-write-message (protocol struct type &key name sequence-number))
+(defgeneric stream-write-message-begin (protocol identifier type seq))
+(defgeneric stream-write-message (protocol struct message-type &key type sequence-number))
 (defgeneric stream-write-message-end (protocol))
-(defgeneric stream-write-struct-begin (protocol name))
-(defgeneric stream-write-struct (protocol value &key name))
+(defgeneric stream-write-struct-begin (protocol identifier))
+(defgeneric stream-write-struct (protocol value &optional type))
 (defgeneric stream-write-struct-end (protocol))
-(defgeneric stream-write-field-begin (protocol name type id))
-(defgeneric stream-write-field (protocol value &key id name type))
+(defgeneric stream-write-field-begin (protocol identifier-name type identifier-number))
+(defgeneric stream-write-field (protocol value &key identifier-name identifier-number type))
 (defgeneric stream-write-field-end (protocol))
 (defgeneric stream-write-field-stop (protocol))
 (defgeneric stream-write-map-begin (protocol key-type value-type size))
@@ -145,8 +145,8 @@
    (version-id :initarg :version-id :reader protocol-version-id)
    (version-number :initarg :version-number :reader protocol-version-number)
    (sequence-number :initform 0 :accessor protocol-sequence-number)
-   (field-key :initarg :field-key :reader protocol-field-key
-              :type (member :number :name))))
+   (field-id-mode :initarg :field-key :reader protocol-field-id-mode
+                  :type (member :identifier-number :identifier-name))))
 
 
 (defclass encoded-protocol (protocol)
@@ -245,39 +245,59 @@
 
 ;;;
 ;;; input implementation
+;;; nb. defined in this sequence to ensure compile-macro presence is whether loading one or
+;;; reloading while developing
 
-(defmethod stream-read-message-begin ((protocol protocol))
-  "Read a message header strictly. A backwards compatible implementation would read the entire I32, in order
- to use a value w/o the #x80000000 tag bit as a string length, but that is not necessary when reading strictly.
- The jira [issue](https://issues.apache.org/jira/browse/THRIFT-254) indicates that all implementions write
- strict by default, and that a 'next' release should treat non-strict messages as bugs.
+(defmethod stream-read-field-begin ((protocol protocol))
+  "Read the field header as per protocol schema and encoding.
+ PROTOCOL : protocol
+ VALUES : string : the field identifier name
+          i16 : the field id number
+          symbol : the field type
+ The protocol's field-id-mode determines which id form to expect.
+   :identifier-number : decodes a type, and unless the type is STOP a subsequent id number
+   :identifier-name : decodes an identifier name and a type."
+  
+  (let ((type nil)
+        (id-number 0)
+        (identifier nil))
+    (ecase (protocol-field-id-mode protocol)
+      (:identifier-number
+       (setf type (stream-read-type protocol))
+       (unless (eq type 'stop)
+         (setf id-number (stream-read-i16 protocol))))
+      (:identifier-name
+       (setf identifier (stream-read-string protocol)
+             ;; NB the bnf is broke here, as it says "T_STOP | <field_name> <field_type> <field_id>",
+             ;; by which there is no way to distinguish the count field of a string from the stop code
+             ;; so perhaps this is excluded for a binary protocol and works only if the
+             ;; protocol's field are themselves self-describing
+             type (stream-read-type protocol))))
+    (values identifier id-number type)))
 
- This version recognizes the layout established by the compact protocol, whereby the first byte is the
- protocol id and subsequent to that is specific to the protocol."
+(defmethod stream-read-field-end ((protocol protocol))
+  "The base method does nothing.")
 
-  (let* ((id (logand (stream-read-i08 protocol) #xff))          ; actually unsigned
-         (ver (logand (stream-read-i08 protocol) #xff))         ; actually unsigned
-         (type-name (stream-read-message-type protocol)))
-    (unless (and (= (protocol-version-id protocol) id) (= (protocol-version-number protocol) ver))
-      (invalid-protocol-version protocol id ver))
-    (let ((name (stream-read-string protocol))
-          (sequence (stream-read-i32 protocol)))
-      (values name type-name sequence))))
+(defmethod stream-read-field((protocol protocol) &optional type)
+  "Read a typed field as per protocol scheme and encoding.
+ PROTOCOL : protocol
+ VALUES : t : the decoded field value
+          string : the field identifier name
+          i16 : the field identifier number"
 
+  (multiple-value-bind (identifier idnr read-type)
+                       (stream-read-field-begin protocol)
+    (if (eq read-type 'stop)
+      (values nil nil 0 'stop)
+      (let* ((value (stream-read-value-as protocol read-type)))
+        (stream-read-field-end protocol)
+        (when type (unless (equal (type-category type) read-type)
+                     (invalid-field-type protocol nil idnr identifier type value)))
+        (values value identifier idnr)))))
 
-(defmethod stream-read-message ((protocol protocol))
-  "Perform a generic 'read' of a complete message. This is here for testing only, as messages are not
- first-class. They protocol interprets them on-the-fly as either requests, in which case the arguments
- are spread and passed to the requested operation on the fly, or responses in which case either the
- id=0 result value is returned, or som other field is present instead and designates an exception to
- signal. see stream-send-request and stream-receive-response."
-  (multiple-value-bind (name type sequence)
-                       (stream-read-message-begin protocol)
-    (let ((body (stream-read-struct protocol name)))
-      (stream-read-message-end protocol)
-      (values name type sequence body))))
-
-(defmethod stream-read-message-end ((protocol protocol)))
+;;; a compiler macro would find no use, since the macro expansion for reading a struct already
+;;; incorporates dispatches on field id to call read-value-as, and stream-read-field itself
+;;; never knows the type at compile time.
 
 
 
@@ -337,53 +357,53 @@
       (with-gensyms (extra-initargs)
         (let* ((class (find-thrift-class type))
               (field-definitions (class-field-definitions class)))
-          `(let* ((class (stream-read-struct-begin protocol))
+          `(let* ((class (stream-read-struct-begin ,prot))
                   (type (class-name class)))
              (unless (equal type ',type)
-               (invalid-struct-type protocol ',type type))
+               (invalid-struct-type ,prot ',type type))
              (let (,@(loop for fd in field-definitions
                            collect (list (field-definition-name fd) nil))
                    (,extra-initargs nil))
-               ,(generate-struct-decoder prot field-definitions extra-initargs))
-             (apply #'make-struct class
-                    ,@(loop for fd in field-definitions
-                            collect (list (field-definition-initarg fd) (field-definition-name fd)))
-                    ,extra-initargs)))))))
+               ,(generate-struct-decoder prot 'class field-definitions extra-initargs)
+               (apply #'make-struct class
+                      ,@(loop for fd in field-definitions
+                              nconc (list (field-definition-initarg fd) (field-definition-name fd)))
+                      ,extra-initargs))))))))
 
 
 
-(defmethod stream-read-field-begin ((protocol protocol))
-  (let ((type nil)
-        (id 0)
-        (name nil))
-    (ecase (protocol-field-key protocol)
-      (:identifier (setf type (stream-read-type protocol))
-                   (unless (eq type 'stop)
-                     (setf id (stream-read-i16 protocol))))
-      (:name (setf name (stream-read-string protocol)
-                   ;; NB the bnf is broke here, as it says "T_STOP | <field_name> <field_type> <field_id>"
-                   ;; but there's no way to distinguish the count field of a string from the stop code
-                   ;; so perhaps this is excluded for a binary protocol and works only if the
-                   ;; protocol's field are themselves self-describing
-                   type (stream-read-type protocol))))
-    (values name id type)))
+(defmethod stream-read-message-begin ((protocol protocol))
+  "Read a message header strictly. A backwards compatible implementation would read the entire I32, in order
+ to use a value w/o the #x80000000 tag bit as a string length, but that is not necessary when reading strictly.
+ The jira [issue](https://issues.apache.org/jira/browse/THRIFT-254) indicates that all implementions write
+ strict by default, and that a 'next' release should treat non-strict messages as bugs.
 
-(defmethod stream-read-field-end ((protocol protocol)))
+ This version recognizes the layout established by the compact protocol, whereby the first byte is the
+ protocol id and subsequent to that is specific to the protocol."
 
-(defmethod stream-read-field((protocol protocol) &optional type)
-  (multiple-value-bind (name id read-type)
-                       (stream-read-field-begin protocol)
-    (if (eq read-type 'stop)
-      (values nil nil 0 'stop)
-      (let* ((value (stream-read-value-as protocol read-type)))
-        (stream-read-field-end protocol)
-        (when type (unless (equal type read-type)
-                     (invalid-field-type protocol nil id name type value)))
-        (values value name id)))))
+  (let* ((id (logand (stream-read-i08 protocol) #xff))          ; actually unsigned
+         (ver (logand (stream-read-i08 protocol) #xff))         ; actually unsigned
+         (type-name (stream-read-message-type protocol)))
+    (unless (and (= (protocol-version-id protocol) id) (= (protocol-version-number protocol) ver))
+      (invalid-protocol-version protocol id ver))
+    (let ((name (stream-read-string protocol))
+          (sequence (stream-read-i32 protocol)))
+      (values name type-name sequence))))
 
-;;; a compiler macro would find no use, since the macro expansion for reading a struct already
-;;; incorporates dispatches on field id to call read-value-as, and stream-read-field itself
-;;; never knows the type at compile time.
+
+(defmethod stream-read-message ((protocol protocol))
+  "Perform a generic 'read' of a complete message. This is here for testing only, as messages are not
+ first-class. They protocol interprets them on-the-fly as either requests, in which case the arguments
+ are spread and passed to the requested operation on the fly, or responses in which case either the
+ id=0 result value is returned, or som other field is present instead and designates an exception to
+ signal. see stream-send-request and stream-receive-response."
+  (multiple-value-bind (name type sequence)
+                       (stream-read-message-begin protocol)
+    (let ((body (stream-read-struct protocol name)))
+      (stream-read-message-end protocol)
+      (values name type sequence body))))
+
+(defmethod stream-read-message-end ((protocol protocol)))
 
 
 
@@ -518,10 +538,17 @@
   (:documentation "Read a value if a specified type.")
   (:method ((protocol protocol) (type-code fixnum))
     (stream-read-value-as protocol (type-code-name protocol type-code)))
+  (:method ((protocol protocol) (type cons))
+    (ecase (first type)
+      (thrift:map (stream-read-map protocol (str-sym (second type)) (str-sym (third type))))
+      (thrift:list (stream-read-list protocol (str-sym (second type))))
+      (thrift:set (stream-read-set protocol (str-sym (second type))))
+      (struct (stream-read-struct protocol (str-sym (second type))))
+      (enum (stream-read-map protocol (str-sym (second type))))))
 
   (:method ((protocol protocol) (type-code (eql 'bool)))
     (stream-read-bool protocol))
-  (:method ((protocol protocol) (type-code (eql 'byte)))
+  (:method ((protocol protocol) (type-code (eql 'thrift:byte)))
     ;; call through the i08 methods as byte ops are transport, not protocol methods
     (stream-read-i08 protocol))
   (:method ((protocol protocol) (type-code (eql 'i08)))
@@ -580,18 +607,128 @@
      `(,(cons-symbol :org.apache.thrift.implementation
                      :stream-read- type) ,protocol))
     (container-type
-     (destructuring-bind (type element-type) type
+     (destructuring-bind (type . element-types) type
        `(,(cons-symbol :org.apache.thrift.implementation
-                       :stream-read- type) ,protocol ',element-type)))
+                       :stream-read- type) ,protocol ,@(mapcar #'(lambda (element-type) `(quote ,(str-sym element-type)))
+                                                               element-types))))
     (struct-type
-     `(stream-read-struct ,protocol ',(second type)))
+     `(stream-read-struct ,protocol ',(str-sym (second type))))
     (enum-type
-     `(stream-read-enum ,protocol ',(second type)))))                       
+     `(stream-read-enum ,protocol ',(str-sym (second type))))))
   
 
 
 
 ;;; output implementation 
+;;; nb. defined in this sequence to ensure compile-macro presence is whether loading one or
+;;; reloading while developing
+
+(defmethod stream-write-field-begin ((protocol protocol) (identifier string) type identifier-number)
+  (ecase (protocol-field-id-mode protocol)
+    (:identifier-number (stream-write-type protocol type)
+                        (stream-write-i16 protocol identifier-number))
+    (:identifier-name (stream-write-string protocol identifier)
+                      (stream-write-type protocol type))))
+
+(defmethod stream-write-field-end ((protocol protocol)))
+
+(defmethod stream-write-field-stop ((protocol protocol))
+  (stream-write-type protocol 'stop))
+
+(defmethod stream-write-field ((protocol protocol) (value t) &key identifier-name identifier-number (type (thrift:type-of value)))
+  (stream-write-field-begin protocol identifier-name type identifier-number)
+  (stream-write-value-as protocol value type)
+  (stream-write-field-end protocol))
+
+(define-compiler-macro stream-write-field (&whole form prot value &key identifier-name identifier-number type &environment env)
+  (expand-iff-constant-types (type) form
+    (with-optional-gensyms (prot) env
+    `(progn (stream-write-field-begin ,prot ,identifier-name ',type ,identifier-number)
+            (stream-write-value-as ,prot ,value ',type)
+            (stream-write-field-end ,prot)))))
+
+
+
+(defmethod stream-write-struct-begin ((protocol protocol) (name string))
+  (stream-write-string protocol name))
+
+(defmethod stream-write-struct-end ((protocol protocol)))
+
+(defmethod stream-write-struct ((protocol protocol) (value thrift-object) &optional (type (type-of value)))
+  (let ((class (find-thrift-class type)))
+    (stream-write-struct-begin protocol (class-identifier class))
+    (dolist (sd (class-field-definitions class))
+      (let ((name (field-definition-name sd)))
+        ;; requirement constraints should be embodied in the slot initform
+        ;; a slot which does not require initialization is skipped if not bound
+        (when (slot-boundp value name)
+          (stream-write-field protocol (slot-value value name)
+                              :identifier-number (field-definition-identifier-number sd)
+                              :identifier-name (field-definition-identifier sd)
+                              :type (field-definition-type sd)))))
+    (stream-write-field-stop protocol)
+    (stream-write-struct-end protocol)))
+
+(defmethod stream-write-struct ((protocol protocol) (value list) &optional (type (error "The class is required.")))
+  (let* ((class (find-thrift-class type))
+         (fields (class-field-definitions class)))
+    (stream-write-struct-begin protocol (class-identifier class))
+    (loop for (id . field-value) in value
+          do (let ((fd (or (find id fields :key #'field-definition-identifier-number)
+                           (error 'unknown-field protocol :id id))))
+               (stream-write-field protocol field-value
+                                   :identifier-number id
+                                   :identifier-name (field-definition-identifier fd)
+                                   :type (field-definition-type fd))))
+    (stream-write-field-stop protocol)
+    (stream-write-struct-end protocol)))
+
+(defmethod stream-write-struct ((protocol protocol) (value hash-table) &optional (type (error "The class is required.")))
+  (let* ((class (find-thrift-class type))
+         (fields (class-field-definitions class)))
+    (stream-write-struct-begin protocol (class-identifier class))
+    (loop for id being each hash-key of value using (hash-value field-value)
+          do (let ((fd (or (find id fields :key #'field-definition-identifier-number)
+                           (error 'unknown-field protocol :id id))))
+               (stream-write-field protocol field-value
+                                   :identifier-number id
+                                   :identifier-name (field-definition-identifier fd)
+                                   :type (field-definition-type fd))))
+    (stream-write-field-stop protocol)
+    (stream-write-struct-end protocol)))
+
+(define-compiler-macro stream-write-struct (&whole form prot value &optional type &environment env)
+  "Iff the type is a constant, emit the structure in-line. In this case allow also the variation, that the
+ structure itself is an a-list of (id-number . place)."
+  (expand-iff-constant-types (type) form
+    (let* ((class (find-thrift-class type))
+           (identifier (class-identifier class))
+           (field-definitions (class-field-definitions class)))
+      (if (typep value '(cons (eql thrift:map)))
+        ;; if it's a literal environment, expand it in-line
+        (with-optional-gensyms (prot) env
+          `(progn (stream-write-struct-begin ,prot ,identifier)
+                  ,@(loop for (nil id place) in (rest value)
+                          for fd = (or (find id field-definitions :key #'field-definition-identifier-number)
+                                       (error "Field id not found: ~s, ~s" id identifier))
+                          do (list id place fd)
+                          collect `(stream-write-field ,prot ,place
+                                                       :identifier-number ,id
+                                                       :identifier-name ,(field-definition-identifier fd)
+                                                       :type ',(field-definition-type fd)))
+                  (stream-write-field-stop ,prot)
+                  (stream-write-struct-end ,prot)))
+        ;; otherwise expand with instance field refences
+        (with-optional-gensyms (prot value) env
+          `(progn (stream-write-struct-begin ,prot ,identifier)
+                  ,@(loop for fd in field-definitions
+                          collect `(stream-write-field ,prot (,(field-definition-reader fd) ,value)
+                                                       :identifier-number ,(field-definition-identifier-number fd)
+                                                       :identifier-name ,(field-definition-identifier fd)
+                                                       :type ',(field-definition-type fd)))
+                  (stream-write-field-stop ,prot)
+                  (stream-write-struct-end ,prot)))))))
+
 
 
 (defmethod stream-write-message-begin ((protocol protocol) name type sequence)
@@ -601,25 +738,25 @@
   (stream-write-string protocol name)
   (stream-write-i32 protocol sequence))
 
-(defmethod stream-write-message ((protocol protocol) (object standard-object) (type (eql 'call))
-                                 &key (name (class-identifier object))
+(defmethod stream-write-message ((protocol protocol) (object standard-object) (message-type (eql 'call))
+                                 &key (type (type-of object))
                                  (sequence-number (protocol-next-sequence-number protocol)))
-  (stream-write-message-begin protocol name type sequence-number)
-  (stream-write-struct protocol object :name name)
+  (stream-write-message-begin protocol (class-identifier type) type sequence-number)
+  (stream-write-struct protocol object type)
   (stream-write-message-end protocol))
 
-(defmethod stream-write-message ((protocol protocol) (object standard-object) (type (eql 'oneway))
-                                 &key (name (class-identifier object))
+(defmethod stream-write-message ((protocol protocol) (object standard-object) (message-type (eql 'oneway))
+                                 &key (type (type-of object))
                                  (sequence-number (protocol-next-sequence-number protocol)))
-  (stream-write-message-begin protocol name type sequence-number)
-  (stream-write-struct protocol object :name name)
+  (stream-write-message-begin protocol (class-identifier type) type sequence-number)
+  (stream-write-struct protocol object type)
   (stream-write-message-end protocol))
 
-(defmethod stream-write-message ((protocol protocol) (object standard-object) (type t)
-                                 &key (name (class-identifier object))
+(defmethod stream-write-message ((protocol protocol) (object standard-object) (message-type t)
+                                 &key (type (type-of object))
                                  (sequence-number (protocol-sequence-number protocol)))
-  (stream-write-message-begin protocol name type sequence-number)
-  (stream-write-struct protocol object :name name)
+  (stream-write-message-begin protocol (class-identifier type) type sequence-number)
+  (stream-write-struct protocol object type)
   (stream-write-message-end protocol))
   
 
@@ -630,101 +767,12 @@
 (defgeneric stream-write-exception (protocol exception)
   (:method ((protocol protocol) (exception thrift-error))
     (stream-write-message protocol exception 'exception
-                          :name (class-identifier exception)))
+                          :identifier (class-identifier exception)))
   
   (:method ((protocol protocol) (exception condition))
     (stream-write-message protocol
                           (make-instance 'application-error :condition exception)
                           'exception)))
-
-
-
-(defmethod stream-write-struct-begin ((protocol protocol) (name string))
-  (stream-write-string protocol name))
-
-(defmethod stream-write-struct-end ((protocol protocol)))
-
-(defmethod stream-write-struct ((protocol protocol) (value thrift-object) &key (name (class-identifier value)))
-  (stream-write-struct-begin protocol name)
-  (dolist (sd (class-field-definitions value))
-    (let ((name (field-definition-name sd)))
-      ;; requirement constraints should be embodied in the slot initform
-      ;; a slot which does not require initialization is skipped if not bound
-      (when (slot-boundp value name)
-        (stream-write-field protocol (slot-value value name)
-                            :id (field-definition-identifier-number sd)
-                            :name (field-definition-identifier sd)
-                            :type (field-definition-type sd)))))
-  (stream-write-field-stop protocol)
-  (stream-write-struct-end protocol))
-
-(defmethod stream-write-struct ((protocol protocol) (value list) &key (name (error "The class is required.")))
-  (let* ((class (find-thrift-class name))
-        (fields (class-field-definitions class))
-        (identifier (class-identifier class)))
-    (stream-write-struct-begin protocol identifier)
-    (loop for (id . field-value) in value
-          do (let ((fd (or (find id fields :key #'field-definition-identifier-number)
-                           (error 'unknown-field protocol :id id))))
-               (stream-write-field protocol field-value
-                                   :id id
-                                   :name (field-definition-identifier fd)
-                                   :type (field-definition-type fd))))
-    (stream-write-field-stop protocol)
-    (stream-write-struct-end protocol)))
-
-(define-compiler-macro stream-write-struct (&whole form prot value &key name &environment env)
-  (expand-iff-constant-types (name) form
-    (let ((field-definitions (class-field-definitions name)))
-      (if (typep value '(cons (eql list)))
-        ;; if it's a literal environment, expand it in-line
-        (with-optional-gensyms (prot) env
-          `(progn (stream-write-struct-begin ,prot ,name)
-                  ,@(loop for (nil id variable) in (rest value)
-                          for fd = (or (find id field-definitions :key #'field-definition-identifier-number)
-                                       (error "Field id not found: ~s, ~s" id name))
-                          collect `(stream-write-field ,prot ,variable
-                                                       :name ,(field-definition-identifier fd)
-                                                       :type ',(field-definition-type fd)
-                                                       :id ,id))
-                  (stream-write-field-stop ,prot)
-                  (stream-write-struct-end ,prot)))
-        ;; otherwise expand with instance field refences
-        (with-optional-gensyms (prot value) env
-          `(progn (stream-write-struct-begin ,prot ,name)
-                  ,@(loop for fd in field-definitions
-                          collect `(stream-write-field ,prot (,(field-definition-reader fd) ,value)
-                                                       :name ,(field-definition-identifier fd)
-                                                       :type ',(field-definition-type fd)
-                                                       :id ,(field-definition-identifier-number fd)))
-                  (stream-write-field-stop ,prot)
-                  (stream-write-struct-end ,prot)))))))
-
-
-
-(defmethod stream-write-field-begin ((protocol protocol) (name string) type id)
-  (ecase (protocol-field-key protocol)
-    (:identifier (stream-write-type protocol type)
-                 (stream-write-i16 protocol id))
-    (:name (stream-write-string protocol name)
-           (stream-write-type protocol type))))
-
-(defmethod stream-write-field-end ((protocol protocol)))
-
-(defmethod stream-write-field-stop ((protocol protocol))
-  (stream-write-type protocol 'stop))
-
-(defmethod stream-write-field ((protocol protocol) (value t) &key name id (identifier id) (type (thrift:type-of value)))
-  (stream-write-field-begin protocol name type identifier)
-  (stream-write-value-as protocol value type)
-  (stream-write-field-end protocol))
-
-(define-compiler-macro stream-write-field (&whole form prot value &key name id type &environment env)
-  (expand-iff-constant-types (type) form
-    (with-optional-gensyms (prot) env
-    `(progn (stream-write-field-begin ,prot ,name ',type ,id)
-            (stream-write-value-as ,prot ,value ',type)
-            (stream-write-field-end ,prot)))))
 
 
 
@@ -865,7 +913,7 @@
 
   (:method ((protocol protocol) (value t) (type (eql 'bool)))
     (stream-write-bool protocol value))
-  (:method ((protocol protocol) (value integer) (type (eql 'byte)))
+  (:method ((protocol protocol) (value integer) (type (eql 'thrift:byte)))
     (stream-write-i08 protocol value))
   (:method ((protocol protocol) (value integer) (type (eql 'i08)))
     (stream-write-i08 protocol value))
@@ -922,12 +970,12 @@
                      :stream-write- type) ,protocol ,value))
     (container-type
      (destructuring-bind (type element-type) type
-       `(,(cons-symbol :org.apache.thrift.implementation
-                       :stream-write- type) ,protocol ,value ',element-type)))
+       `(,(cons-symbol :org.apache.thrift.implementation :stream-write- type)
+         ,protocol ,value ',element-type)))
     (struct-type
-     `(stream-read-struct ,protocol ,value ',(second type)))
+     `(stream-write-struct ,protocol ,value ',(str-sym (second type))))
     (enum-type
-     `(stream-read-enum ,protocol ,value ',(second type)))))
+     `(stream-write-i16 ,protocol ,value))))
 
 
 ;;;
@@ -939,10 +987,9 @@
            :condition condition)))
 
 
-(defgeneric class-not-found (protocol name)
-  (:method ((protocol protocol) name)
-    (or *thrift-prototype-class*
-        (error 'class-not-found-error :protocol protocol :name name))))
+(defgeneric class-not-found (protocol identifier)
+  (:method ((protocol protocol) identifier)
+    (error 'class-not-found-error :protocol protocol :identifier identifier)))
 
 
 (defgeneric invalid-enum (protocol type datum)
@@ -1001,6 +1048,12 @@
   (:method ((protocol protocol) id version)
     (error 'protocol-version-error :protocol protocol :datum (cons id version)
            :expected-type (protocol-version protocol))))
+
+
+(defgeneric invalid-sequence-number (protocol number expected-number)
+  (:method ((protocol protocol) number expected-number)
+    (error 'sequence-number-error :protocol protocol
+           :number number :expected-number expected-number)))
 
 
 (defgeneric invalid-struct-type (protocol type datum)

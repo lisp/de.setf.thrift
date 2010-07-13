@@ -2,11 +2,9 @@
 
 (in-package :common-lisp-user)
 
-(asdf:defsystem :org.apache.thrift.test
-  :nicknames (:thrift)
-  :depends-on (:org.apache.thrift
-               :net.common-lisp.bordeaux-threads
-               :de.weitz.cl-ppcre)
+(asdf:defsystem :thrift-test
+  :depends-on (:thrift
+               :bordeaux-threads)
   :description "tests for com.apache.thrift"
   :serial t
   :components ((:file "package")
@@ -14,8 +12,8 @@
                (:file "test")
                (:file "conditions")
                (:file "definition-operators")
-               (:file "encoding-operators")
                (:file "protocol")
+               #+(or)
                (:module :gen-cl
                 :serial t
                 :components ((:file "AnnotationTest-types")

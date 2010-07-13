@@ -111,15 +111,20 @@
 ;;;
 ;;; definition operators
 
-(def-macro def-package (name)
+(def-macro def-package (name &key use)
   (let ((request-name (cons-symbol :keyword name :-request))
         (response-name (cons-symbol :keyword name :-response)))
     `(macrolet ((ensure-package (name &rest options)
-                  `(unless (find-package ',name)
-                     (defpackage ,name ,@options))))
+                  `(let ((package (find-package ',name)))
+                     (cond (package 
+                            ,@(let ((use (assoc :use options)))
+                                (when use `((use-package ',(rest use) package))))
+                            package)
+                           (t
+                            (defpackage ,name ,@options))))))
        ;; the 'application' package is linked to cl and thrift with shodows
        (ensure-package ,name
-                       (:use :common-lisp :thrift)
+                       (:use :common-lisp :thrift ,@use)
                        (:shadowing-import-from :common-lisp :byte :list :map :set :type-of))
        ;; the request/respone packages are isolated
        (ensure-package ,request-name (:use))
@@ -146,44 +151,70 @@
 
 
 (def-macro def-struct (identifier fields &rest options)
+  "DEF-STRUCT identifier [doc-string] ( field-specifier* ) option*
+ [Macro]
+
+ field-specifier ::= ( field-identifier default &key type id documentation )
+ option ::= (:documentation docstring)
+          | (:metaclass metaclass)
+          | (:identifier identifier)
+
+ Define a thrift struct with the declared fields. The class and field names are computed by cononicalizing the
+ respective identifier and interning it in the current *package*. Each identifier remains associated with its
+ metaobject for codec use. Options allow for an explicit identifier, a metacoal other than thrift-struct-class,
+ and a documentation string.
+
+ The class is bound to its name as bout the thrift class and CLOS class."
+
   (let ((metaclass (or (second (assoc :metaclass options)) 'thrift-struct-class))
         (identifier (or (second (assoc :identifier options)) identifier))
+        (condition-class (second (assoc :condition-class options)))
         (name (str-sym identifier))
         (documentation nil))
     (when (stringp fields)
       (shiftf documentation fields (pop options)))
-    ;; the definitions are used to compile codecs
+    ;; make the definitions available to compile codecs
     `(eval-when (:compile-toplevel :load-toplevel :execute)
        (defclass ,name (thrift-object)
          ,(loop for field in fields
-                collect (destructuring-bind (slot-identifier default &key type id documentation) field
+                collect (destructuring-bind (slot-identifier default &key type id documentation (optional nil o-s))
+                                            field
                           (assert (typep id 'fixnum))
                           `(,(str-sym slot-identifier)
                             :initarg ,(cons-symbol :keyword slot-identifier)
                             :accessor ,(str-sym identifier "-" slot-identifier)
                             ,@(when type `(:type ,type))
                             :identifier-number ,id
-                            :identifier ,slot-identifier
+                            :identifier-name ,identifier
                             ,@(when default `(:initform ,default))
+                            ,@(when o-s `(:optional ,optional))
                             ,@(when documentation `(:documentation ,(string-trim *whitespace* documentation))))))
          (:metaclass ,metaclass)
-         ,@(unless (assoc :identifier options) `((:identifier ,identifier)))
+         (:identifier ,identifier)
+         ,@(when condition-class `((:condition-class ,condition-class)))
          ,@(when documentation `((:documentation ,(string-trim *whitespace* documentation)))))
-       (setf (find-thrift-class ,identifier) (find-class ',name)))))
+       ,@(unless (eq metaclass 'thrift-exception-class)
+           `((export ',name (symbol-package ',name))
+             (setf (find-thrift-class ',name) (find-class ',name)))))))
 
 
 (def-macro def-exception (identifier fields &rest options)
-  "Define a thrift exception class.
- identifier : string : the external name for the exception
- fields : (identifier type field-id)* : for each, the external identifier, type, and field id
- options : list : the class options allow a superset of those for condition classes.
-   of them only default initargs, documentaton, and report apply. the remainder carr over to
-   the shadow class.
+  "DEF-EXCEPTION identifier [doc-string] ( field-specifier* ) option*
+ [Macro]
 
- Generates a condition definition and a shadow class definition, named <identifier>-standard-class.
- The latter maintains the field definition information."
+ field-specifier ::= ( field-identifier default &key type id documentation )
+ option ::= (:documentation docstring)
+          | (:metaclass metaclass)
+          | (:identifier identifier)
+
+ Define a thrift exception with the declared fields. This involves two classes. A condition is defined
+ to use as a signal/error argument and a proxy struct class is defined for codec use.
+ The proxy class is bound as the class name's thrift class, while the struct class is bound as the
+ CLOS class."
   
-  (let* ((name (str-sym identifier))
+  (let* ((metaclass (or (second (assoc :metaclass options)) 'thrift-exception-class))
+         (identifier (or (second (assoc :identifier options)) identifier))
+         (name (str-sym identifier))
          (struct-identifier (concatenate 'string identifier "ExceptionClass"))
          (struct-name (str-sym struct-identifier))
          (documentation nil))
@@ -191,16 +222,18 @@
       (shiftf documentation fields (pop options)))
     ;; the definitions are used to compile codecs
     `(eval-when (:compile-toplevel :load-toplevel :execute)
+       (export ',name (symbol-package ',name))
        (def-struct ,struct-identifier
          ,fields
          (:identifier ,identifier)
-         (:metaclass thrift-exception-class)
+         (:metaclass ,metaclass)
          (:condition-class ,name)
          ,@options)
        (define-condition ,name (application-error)
          ,(loop for field in fields
-                collect (destructuring-bind (slot-identifier default &key type id documentation) field
-                          (declare (ignore id))
+                collect (destructuring-bind (slot-identifier default &key type id documentation optional)
+                                            field
+                          (declare (ignore id optional))
                           `(,(str-sym slot-identifier)
                             :initarg ,(cons-symbol :keyword slot-identifier)
                             :accessor ,(str-sym identifier "-" slot-identifier)
@@ -210,17 +243,23 @@
          ,@(when documentation `((:documentation ,(string-trim *whitespace* documentation))))
          ,@(remove-if-not #'(lambda (key) (member key '(:default-initargs :documentation :report)))
                           options :key #'first))
-       (defmethod simple-condition-format-control ((error ,name))
+       (defmethod thrift-error-format-control ((error ,name))
          (concatenate 'string (call-next-method)
                       ,(format nil "~{ ~a: ~~s~}." (mapcar #'first fields))))
-       (defmethod simple-condition-format-arguments ((error ,name))
+       (defmethod thrift-error-format-arguments ((error ,name))
          (append (call-next-method)
                  (list ,@(loop for (slot-identifier) in fields
                                collect `(,(str-sym identifier "-" slot-identifier) error)))))
-       (setf (find-thrift-class ,identifier) (find-class ',struct-name)))))
+       (setf (find-thrift-class ',name) (find-class ',struct-name)))))
 
 
-(defun generate-struct-decoder (prot field-definitions extra-field-plist)
+
+(defun generate-struct-decoder (prot class field-definitions extra-field-plist)
+  "Generate a form which decodes a the given struct fiels in-line.
+ PROT : a variable bound to a protocol instance
+ FIELD-DEFINITIONS : a list of field definitions - either definition metaobjects or definition declarations
+ EXTRA-FIELD-PLIST : a variable bound to a plist in which unknown fields are to be cached."
+
   (with-gensyms (value)
     `(loop (multiple-value-bind (name id read-field-type)
                                 (stream-read-field-begin ,prot)
@@ -231,17 +270,17 @@
                        for field-type = (field-definition-type fd)
                        do (list fd id)
                        collect `(,id 
-                                 (if (equal read-field-type ',field-type)
+                                 (if (equal read-field-type ',(type-category field-type))
                                    (setf ,(field-definition-name fd)
                                          (stream-read-value-as ,prot ',field-type))
                                    (let ((,value (stream-read-value-as ,prot read-field-type)))
-                                     (invalid-field-type ,prot class ,id name ',field-type ,value)
+                                     (invalid-field-type ,prot ,class ,id name ',field-type ,value)
                                      ;; iff it returns
                                      (setf ,(field-definition-name fd) ,value)))))
                (t
                 ;; handle unknown fields
                 (let* ((value (stream-read-value-as ,prot read-field-type))
-                       (fd (unknown-field class name id read-field-type value)))
+                       (fd (unknown-field ,class name id read-field-type value)))
                   (if fd
                     (setf (getf ,extra-field-plist (field-definition-initarg fd)) value)
                     (unknown-field ,prot name id read-field-type value)))))
@@ -262,7 +301,8 @@
          (parameter-names (mapcar #'(lambda (a) (str-sym (first a))) parameter-list))
          (parameter-ids (mapcar #'third parameter-list))
          (type-names (mapcar #'(lambda (a) (type-name-class (second a))) parameter-list))
-         (call-struct-name (str identifier "_args"))
+         (call-struct (or (second (assoc :call-struct options)) (str identifier "_args")))
+         (reply-struct (or (second (assoc :reply-struct-type options)) (str identifier "_result")))
          (success (str-sym "success")))
     
     (with-gensyms (gprot extra-initargs)
@@ -275,39 +315,41 @@
            (stream-write-message-begin ,gprot ,identifier 'call
                                        (protocol-next-sequence-number ,gprot))
            ;; use the respective args structure as a template to generate the message
-           (stream-write-struct ,gprot (list ,@(mapcar #'cons parameter-ids parameter-names)) :identifier ',call-struct-name)
+           (stream-write-struct ,gprot (thrift:map ,@(mapcar #'(lambda (id name) `(cons ,id ,name)) parameter-ids parameter-names))
+                                ',(str-sym call-struct))
            (stream-write-message-end ,gprot)
            ,(if oneway-p
               nil
               `(multiple-value-bind (name type sequence)
                                     (stream-read-message-begin ,gprot)
                  (unless (eql sequence (protocol-sequence-number ,gprot))
-                   (invalid-sequence-number ,gprot sequence))
+                   (invalid-sequence-number ,gprot sequence (protocol-sequence-number ,gprot)))
                  (ecase type
                    (reply
                     (let (,@(unless (eq return-type 'void) `((,success nil)))
                           ,@(loop for name in exception-names collect `(,name nil))
                           (,extra-initargs nil))
                       ,(generate-struct-decoder gprot
+                                                `(find-thrift-class ',(str-sym reply-struct))
                                                 `(,@(unless (eq return-type 'void) `((,success nil :id 0 :type ,return-type)))
                                                   ,@exceptions)
-                                                extra-initargs))
-                    (stream-read-message-end ,gprot)
-                    ,@(when exceptions
-                        `((cond
-                           ,@(mapcar #'(lambda (ex) `(,ex (response-exception ,gprot name sequence ,ex)))
-                                     exception-names))))
-                    ,success)
+                                                extra-initargs)
+                      (stream-read-message-end ,gprot)
+                      ,@(when exceptions
+                          `((cond
+                             ,@(mapcar #'(lambda (ex) `(,ex (response-exception ,gprot name sequence ,ex)))
+                                       exception-names))))
+                      ,(if (eq return-type 'void) nil success )))
                    ((call oneway)
                     ;; received a call/oneway when expecting a response
-                    (unexpected-request protocol name sequence
-                                        (prog1 (stream-read-struct protocol)
-                                          (stream-read-message-end protocol))))
+                    (unexpected-request ,gprot name sequence
+                                        (prog1 (stream-read-struct ,gprot)
+                                          (stream-read-message-end ,gprot))))
                    (exception
                     ;; received an exception as a response
-                    (response-exception protocol name sequence
-                                        (prog1 (stream-read-struct protocol)
-                                          (stream-read-message-end protocol))))))))))))
+                    (response-exception ,gprot name sequence
+                                        (prog1 (stream-read-struct ,gprot)
+                                          (stream-read-message-end ,gprot))))))))))))
     
 
 
@@ -325,7 +367,8 @@
                                (error "An implementation function is required.")))
            (parameter-names (mapcar #'(lambda (a) (str-sym (first a))) parameter-list))
            (defaults (mapcar #'(lambda (a) (fourth a)) parameter-list))
-           (reply-struct (or (second (assoc :reply-struct-type options)) (str identifier "_result")))
+           (call-struct (or (second (assoc :call-struct options)) (str identifier "_args")))
+           (reply-struct (or (second (assoc :reply-struct options)) (str identifier "_result")))
            (exceptions (rest (assoc :exceptions options)))
            (application-form `(if ,extra-args
                                 (apply #',implementation ,@parameter-names ,extra-args)
@@ -343,7 +386,8 @@
               (defmethod ,name ((,service t) (,seq t) (,gprot protocol))
                 (let (,@(mapcar #'list parameter-names defaults)
                       (,extra-args nil))
-                  ,(generate-struct-decoder gprot (mapcar #'parm-to-field-decl parameter-list) extra-args)
+                  ,(generate-struct-decoder gprot `(find-thrift-class ',(str-sym call-struct))
+                                            (mapcar #'parm-to-field-decl parameter-list) extra-args)
                   ,(let ((expression
                           (cond (oneway-p
                                  application-form)
@@ -351,14 +395,12 @@
                                  `(prog1
                                     ,application-form
                                     (stream-write-message-begin ,gprot ,identifier 'reply ,seq)
-                                    (stream-write-struct ,gprot (list)
-                                                         :identifier ',reply-struct)
+                                    (stream-write-struct ,gprot (thrift:map) ',(str-sym reply-struct))
                                     (stream-write-message-end ,gprot)))
                                 (t
                                  `(let ((result ,application-form))
                                     (stream-write-message-begin ,gprot ,identifier 'reply ,seq)
-                                    (stream-write-struct ,gprot (list (cons 0 result))
-                                                         :identifier ',reply-struct)
+                                    (stream-write-struct ,gprot (thrift:map (cons 0 result)) ',(str-sym reply-struct))
                                     (stream-write-message-end ,gprot)
                                     result)))))
                      (if exceptions
@@ -372,8 +414,8 @@
                                                 ;; sent as a reply in order to effect operation-specific exception
                                                 ;; processing.
                                                 (stream-write-message-begin ,gprot ,identifier 'reply ,seq)
-                                                (stream-write-struct ,gprot (list (cons ,id condition))
-                                                                     :identifier ',reply-struct)
+                                                (stream-write-struct ,gprot (thrift:map (cons ,id condition))
+                                                                     ',(str-sym reply-struct))
                                                 (stream-write-message-end ,gprot)
                                                 condition)))))
                        expression))))))))
@@ -435,7 +477,7 @@
             ;; construct and bind the global service instance
             (defparameter ,name
               (make-instance ',class
-                :name ,identifier
+                :identifier ,identifier
                 :base-services (list ,@(mapcar #'str-sym (if (listp base-services) base-services (list base-services))))
                 :methods ',(mapcar #'(lambda (identifier name) `(,identifier . ,name))
                                    identifiers response-names)
