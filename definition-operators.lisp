@@ -98,12 +98,13 @@
                            (t
                             (defpackage ,name ,@options))))))
        ;; the 'application' package is linked to cl and thrift with shodows
-       (ensure-package ,name
-                       (:use :common-lisp :thrift ,@use)
-                       (:shadowing-import-from :common-lisp :byte :list :map :set :type-of))
-       ;; the request/respone packages are isolated
-       (ensure-package ,request-name (:use))
-       (ensure-package ,response-name (:use)))))
+       (eval-when (:load-toplevel :compile-toplevel :execute)
+         (ensure-package ,name
+                         (:use :common-lisp :thrift ,@use)
+                         (:shadowing-import-from :common-lisp :byte :list :map :set :type-of))
+         ;; the request/respone packages are isolated
+         (ensure-package ,request-name (:use))
+         (ensure-package ,response-name (:use))))))
 
 
 (defmacro def-enum (identifier entries)
@@ -276,6 +277,7 @@
  exception as per the response."
 
   (let* ((identifier (or (second (assoc :identifier options)) (string name)))
+         (documentation (second (assoc :documentation options)))
          (exceptions (rest (assoc :exceptions options)))
          (exception-names (mapcar #'str-sym (mapcar #'car exceptions)))
          (oneway-p (second (assoc :oneway options)))
@@ -293,6 +295,7 @@
                                   :generic-function-class 'thrift-request-function
                                   :identifier ,identifier)
          (defmethod ,name ((,gprot protocol) ,@(mapcar #'list parameter-names type-names))
+           ,@(when documentation `(,documentation))
            (stream-write-message-begin ,gprot ,identifier 'call
                                        (protocol-next-sequence-number ,gprot))
            ;; use the respective args structure as a template to generate the message
@@ -320,7 +323,7 @@
                       (stream-read-message-end ,gprot)
                       ,@(when exceptions
                           `((cond
-                             ,@(mapcar #'(lambda (ex) `(,ex (response-exception ,gprot name sequence ,ex)))
+                             ,@(mapcar #'(lambda (ex) `(,ex (response-exception ,gprot request-message-identifier sequence ,ex)))
                                        exception-names))))
                       ,(if (eq return-type 'void) nil success )))
                    ((call oneway)
@@ -342,9 +345,10 @@
  The default method decodes the declared argument struct, invokes the base operator and, depending
  on the return type, encodes a response message. The given sequence number is reused in the response.
  The service argument is available for specialization, but otherwise ignored."
-
+  
   (with-gensyms (service seq gprot extra-args)
     (let* ((identifier (or (second (assoc :identifier options)) (string name)))
+           (documentation (second (assoc :documentation options)))
            (oneway-p (second (assoc :oneway options)))
            (implementation (or (second (assoc :implementation-function options))
                                (error "An implementation function is required.")))
@@ -356,52 +360,56 @@
            (application-form `(if ,extra-args
                                 (apply #',implementation ,@parameter-names ,extra-args)
                                 (,implementation ,@parameter-names))))
-    
-    `(progn (ensure-generic-function ',name
-                                       :lambda-list '(service sequence-number protocol)
-                                       :generic-function-class 'thrift-response-function
-                                       :identifier ,identifier
-                                       :implementation-function
-                                       ,(etypecase implementation
-                                          ;; defer the evaluation
-                                          (symbol `(quote ,implementation))
-                                          ((cons (eql lambda)) `(function ,implementation))))
-              (defmethod ,name ((,service t) (,seq t) (,gprot protocol))
-                (let (,@(mapcar #'list parameter-names defaults)
-                      (,extra-args nil))
-                  ,(generate-struct-decoder gprot `(find-thrift-class ',(str-sym call-struct))
-                                            (mapcar #'parm-to-field-decl parameter-list) extra-args)
-                  ,(let ((expression
-                          (cond (oneway-p
-                                 application-form)
-                                ((eq return-type 'void)
-                                 `(prog1
-                                    ,application-form
-                                    (stream-write-message-begin ,gprot ,identifier 'reply ,seq)
-                                    (stream-write-struct ,gprot (thrift:list) ',(str-sym reply-struct))
-                                    (stream-write-message-end ,gprot)))
-                                (t
-                                 `(let ((result ,application-form))
-                                    (stream-write-message-begin ,gprot ,identifier 'reply ,seq)
-                                    (stream-write-struct ,gprot (thrift:list (cons 0 result)) ',(str-sym reply-struct))
-                                    (stream-write-message-end ,gprot)
-                                    result)))))
-                     (if exceptions
-                       `(handler-case ,expression
-                          ,@(loop for exception-spec in exceptions
-                                  collect (destructuring-bind (field-name default &key type id)
-                                                              exception-spec
-                                            (declare (ignore field-name default))
-                                            (let ((external-exception-type (second type)))
-                                              `(,(str-sym external-exception-type) (condition)
-                                                ;; sent as a reply in order to effect operation-specific exception
-                                                ;; processing.
-                                                (stream-write-message-begin ,gprot ,identifier 'reply ,seq)
-                                                (stream-write-struct ,gprot (thrift:list (cons ,id condition))
-                                                                     ',(str-sym reply-struct))
-                                                (stream-write-message-end ,gprot)
-                                                condition)))))
-                       expression))))))))
+      (if (fboundp implementation)
+        `(progn (ensure-generic-function ',name
+                                         :lambda-list '(service sequence-number protocol)
+                                         :generic-function-class 'thrift-response-function
+                                         :identifier ,identifier
+                                         :implementation-function
+                                         ,(etypecase implementation
+                                            ;; defer the evaluation
+                                            (symbol `(quote ,implementation))
+                                            ((cons (eql lambda)) `(function ,implementation))))
+                (defmethod ,name ((,service t) (,seq t) (,gprot protocol))
+                  ,@(when documentation `(,documentation))
+                  (let (,@(mapcar #'list parameter-names defaults)
+                        (,extra-args nil))
+                    ,(generate-struct-decoder gprot `(find-thrift-class ',(str-sym call-struct))
+                                              (mapcar #'parm-to-field-decl parameter-list) extra-args)
+                    ,(let ((expression
+                            (cond (oneway-p
+                                   application-form)
+                                  ((eq return-type 'void)
+                                   `(prog1
+                                      ,application-form
+                                      (stream-write-message-begin ,gprot ,identifier 'reply ,seq)
+                                      (stream-write-struct ,gprot (thrift:list) ',(str-sym reply-struct))
+                                      (stream-write-message-end ,gprot)))
+                                  (t
+                                   `(let ((result ,application-form))
+                                      (stream-write-message-begin ,gprot ,identifier 'reply ,seq)
+                                      (stream-write-struct ,gprot (thrift:list (cons 0 result)) ',(str-sym reply-struct))
+                                      (stream-write-message-end ,gprot)
+                                      result)))))
+                       (if exceptions
+                         `(handler-case ,expression
+                            ,@(loop for exception-spec in exceptions
+                                    collect (destructuring-bind (field-name default &key type id)
+                                                                exception-spec
+                                              (declare (ignore field-name default))
+                                              (let ((external-exception-type (second type)))
+                                                `(,(str-sym external-exception-type) (condition)
+                                                  ;; sent as a reply in order to effect operation-specific exception
+                                                  ;; processing.
+                                                  (stream-write-message-begin ,gprot ,identifier 'reply ,seq)
+                                                  (stream-write-struct ,gprot (thrift:list (cons ,id condition))
+                                                                       ',(str-sym reply-struct))
+                                                  (stream-write-message-end ,gprot)
+                                                  condition)))))
+                         expression)))))
+        ;; if no implementation is present, warn and emit no interface
+        (progn (when *compile-verbose* (warn "No response implementation present: ~s." implementation))
+               (values))))))
 
 
 (defmacro def-service (identifier base-services &rest options)
@@ -427,7 +435,8 @@
 
     `(progn ,@(mapcan #'(lambda (method-declaration)
                           (destructuring-bind (identifier (parameter-list return-type) &key (oneway nil) (exceptions nil)
-                                                          (implementation-function (str-sym  identifier)))
+                                                          (implementation-function (str-sym  identifier))
+                                                          documentation)
                                               (rest method-declaration)
                             (let* ((call-struct-identifier (str identifier "_args"))
                                    (reply-struct-identifier (str identifier "_result"))
@@ -443,6 +452,7 @@
                                 (export ',response-function-name (symbol-package ',response-function-name))
                                 (def-request-method ,request-function-name (,parameter-list ,return-type)
                                   (:identifier ,identifier)
+                                  ,@(when documentation `((:documentation ,(string-trim *whitespace* documentation))))
                                   (:call-struct ,call-struct-identifier)
                                   (:reply-struct ,reply-struct-identifier)
                                   ,@(when exceptions `((:exceptions ,@exceptions)))

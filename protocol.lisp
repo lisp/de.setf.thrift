@@ -501,20 +501,22 @@
 
 (define-compiler-macro stream-read-map (&whole form prot &optional key-type value-type &environment env)
   (expand-iff-constant-types (key-type value-type) form
-    (with-optional-gensyms (prot) env
-      `(multiple-value-bind (key-type value-type size) (stream-read-map-begin ,prot)
-         (unless (equal key-type ',key-type)
-           (invalid-element-type ,prot 'thrift:map ',key-type key-type))
-         (unless (equal value-type ',value-type)
-           (invalid-element-type protocol 'thrift:map ',value-type value-type))
-         (unless (typep size 'field-size)
-           (invalid-field-size ,prot 0 "" 'field-size size))
-         (dotimes (i size)
-           ;; no type check - presume the respective reader is correct.
-           (setf (gethash (stream-read-value-as protocol ',key-type) map)
-                 (stream-read-value-as protocol ',value-type)))
-         (stream-read-map-end ,prot)
-         map))))
+    (with-gensyms (map)
+      (with-optional-gensyms (prot) env
+        `(let ((,map (thrift:map)))
+           (multiple-value-bind (key-type value-type size) (stream-read-map-begin ,prot)
+             (unless (equal key-type ',key-type)
+               (invalid-element-type ,prot 'thrift:map ',key-type key-type))
+             (unless (equal value-type ',value-type)
+               (invalid-element-type ,prot 'thrift:map ',value-type value-type))
+             (unless (typep size 'field-size)
+               (invalid-field-size ,prot 0 "" 'field-size size))
+             (dotimes (i size)
+               ;; no type check - presume the respective reader is correct.
+               (setf (gethash (stream-read-value-as ,prot ',key-type) ,map)
+                     (stream-read-value-as ,prot ',value-type)))
+             (stream-read-map-end ,prot)
+             ,map))))))
 
 
 
@@ -672,13 +674,12 @@
                      :stream-read- type) ,protocol))
     ((member thrift:set thrift:list thrift:map)
      (warn "Compiling generic container decoder: ~s." type)
-     `(,(cons-symbol :org.apache.thrift.implementation
-                     :stream-read- type) ,protocol))
+     `(,(cons-symbol :org.apache.thrift.implementation :stream-read- type)
+       ,protocol))
     (container-type
      (destructuring-bind (type . element-types) type
-       `(,(cons-symbol :org.apache.thrift.implementation
-                       :stream-read- type) ,protocol ,@(mapcar #'(lambda (element-type) `(quote ,(str-sym element-type)))
-                                                               element-types))))
+       `(,(cons-symbol :org.apache.thrift.implementation :stream-read- type)
+         ,protocol ,@(mapcar #'(lambda (type) `(quote ,type)) element-types))))
     (struct-type
      `(stream-read-struct ,protocol ',(str-sym (second type))))
     (enum-type
@@ -742,22 +743,7 @@
     (stream-write-struct-end protocol)))
 
 (defmethod stream-write-struct ((protocol protocol) (value list) &optional type)
-  (let ((class (find-thrift-class type))
-         (fields (class-field-definitions class)))
-    (stream-write-struct-begin protocol (class-identifier class))
-    (loop for (id . field-value) in value
-          do (let ((fd (or (find id fields :key #'field-definition-identifier-number)
-                           (error 'unknown-field protocol :number id))))
-               (stream-write-field protocol field-value
-                                   :identifier-number id
-                                   :identifier-name (field-definition-identifier fd)
-                                   :type (field-definition-type fd))))
-    (stream-write-field-stop protocol)
-    (stream-write-struct-end protocol)))
-
-
-(defun x (protocol value &optional type)
-(let* ((class (find-thrift-class type))
+  (let* ((class (find-thrift-class type))
          (fields (class-field-definitions class)))
     (stream-write-struct-begin protocol (class-identifier class))
     (loop for (id . field-value) in value
@@ -886,8 +872,8 @@
                using (hash-key element-key)
                do (progn #+thrift-check-types (assert (typep element-value ',value-type))
                          #+thrift-check-types (assert (typep element-key ',key-type))
-                         (stream-write-value-as protocol element-key ',key-type)
-                         (stream-write-value-as protocol element-value ',value-type)))
+                         (stream-write-value-as ,prot element-key ',key-type)
+                         (stream-write-value-as ,prot element-value ',value-type)))
          (stream-write-map-end ,prot)))))
 
 
@@ -908,19 +894,16 @@
       (stream-write-value-as protocol elt type))
     (stream-write-list-end protocol)))
 
-(define-compiler-macro stream-write-list (&whole form prot value &optional type &environment env)
-  (expand-iff-constant-types (type) form
-    (etypecase type
-      (symbol )
-      ((cons (eql thrift:list)) (setf type (second type))))
+(define-compiler-macro stream-write-list (&whole form prot value &optional element-type &environment env)
+  (expand-iff-constant-types (element-type) form
     (with-optional-gensyms (prot value) env
       `(let ((size (list-length ,value)))
          (unless (typep size 'field-size)
            (invalid-field-size ,prot 0 "" 'field-size size))
-         (stream-write-list-begin ,prot ',type size)
+         (stream-write-list-begin ,prot ',element-type size)
          (dolist (element ,value)
-           #+thrift-check-types (assert (typep element ',type))
-           (stream-write-value-as ,prot element ',type))
+           #+thrift-check-types (assert (typep element ',element-type))
+           (stream-write-value-as ,prot element ',element-type))
          (stream-write-list-end ,prot)))))
 
 
@@ -942,19 +925,16 @@
       (stream-write-value-as protocol element type))
     (stream-write-set-end protocol)))
 
-(define-compiler-macro stream-write-set (&whole form prot value &optional type &environment env)
-  (expand-iff-constant-types (type) form
-    (etypecase type
-      (symbol )
-      ((cons (eql thrift:set)) (setf type (second type))))
+(define-compiler-macro stream-write-set (&whole form prot value &optional element-type &environment env)
+  (expand-iff-constant-types (element-type) form
     (with-optional-gensyms (prot value) env
     `(let ((size (list-length ,value)))
        (unless (typep size 'field-size)
          (invalid-field-size ,prot 0 "" 'field-size size))
-       (stream-write-set-begin ,prot ',type size)
+       (stream-write-set-begin ,prot ',element-type size)
        (dolist (element ,value)
-         #+thrift-check-types (assert (typep element ',type))
-         (stream-write-value-as ,prot element ',type))
+         #+thrift-check-types (assert (typep element ',element-type))
+         (stream-write-value-as ,prot element ',element-type))
        (stream-write-set-end ,prot)))))
 
 
@@ -1004,6 +984,9 @@
   (:method ((protocol protocol) (value integer) (type (eql 'enum)))
     ;; as a fall-back
     (stream-write-i16 protocol value))
+  (:method ((protocol protocol) (value integer) (type cons))
+    ;; as a fall-back
+    (stream-write-i16 protocol value))
   (:method ((protocol protocol) (value integer) (type (eql 'i32)))
     (stream-write-i32 protocol value))
   (:method ((protocol protocol) (value integer) (type (eql 'i64)))
@@ -1019,14 +1002,25 @@
   (:method ((protocol protocol) (value vector) (type (eql 'binary)))
     (stream-write-binary protocol value))
 
-  (:method ((protocol protocol) (value hash-table) (type (eql 'struct)))
+  (:method ((protocol protocol) (value thrift-object) (type (eql 'struct)))
     (stream-write-struct protocol value))
+  (:method ((protocol protocol) (value thrift-object) (type symbol))
+    (stream-write-struct protocol value type))
+  (:method ((protocol protocol) (value thrift-object) (type cons))
+    (stream-write-struct protocol value (str-sym (second type))))
   (:method ((protocol protocol) (value hash-table) (type (eql 'thrift:map)))
     (stream-write-map protocol value))
+  (:method ((protocol protocol) (value hash-table) (type cons))
+    (stream-write-map protocol value (str-sym (second type)) (str-sym (third type))))
+
   (:method ((protocol protocol) (value list) (type (eql 'thrift:list)))
     (stream-write-list protocol value))
+  (:method ((protocol protocol) (value list) (type cons))
+    (stream-write-list protocol value (str-sym (second type))))
   (:method ((protocol protocol) (value list) (type (eql 'thrift:set)))
-    (stream-write-set protocol value)))
+    (stream-write-set protocol value))
+  (:method ((protocol protocol) (value list) (type cons))
+    (stream-write-set protocol value (str-sym (second type)))))
 
 
 (define-compiler-macro stream-write-value-as (&whole form protocol value type)
@@ -1051,9 +1045,9 @@
      `(,(cons-symbol :org.apache.thrift.implementation
                      :stream-write- type) ,protocol ,value))
     (container-type
-     (destructuring-bind (type element-type) type
+     (destructuring-bind (type &rest element-types) type
        `(,(cons-symbol :org.apache.thrift.implementation :stream-write- type)
-         ,protocol ,value ',element-type)))
+         ,protocol ,value ,@(mapcar #'(lambda (type) `(quote ,type)) element-types))))
     (struct-type
      `(stream-write-struct ,protocol ,value ',(str-sym (second type))))
     (enum-type

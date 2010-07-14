@@ -109,14 +109,16 @@
  Iff the first constituent includes a ':' use that as the symbol prefix."
     (declare (dynamic-extent strs))
     (when strs                            ; if none are given, return nil
-      (let* ((first (pop strs))
-             (colon (position #\: first)))
-        (if colon
-          ;; extract the package prefix from the first constituent
-          ;; pass it as a constructed symbol to observe current read case rules
-          (apply #'cons-symbol (cons-symbol :keyword (subseq first 0 colon))
-                 (subseq first (1+ colon)) strs)
-          (apply #'cons-symbol *package* first strs)))))
+      (if (and (symbolp (first strs)) (null (rest strs)))
+        (first strs)
+        (let* ((first (pop strs))
+               (colon (position #\: first)))
+          (if colon
+            ;; extract the package prefix from the first constituent
+            ;; pass it as a constructed symbol to observe current read case rules
+            (apply #'cons-symbol (cons-symbol :keyword (subseq first 0 colon))
+                   (subseq first (1+ colon)) strs)
+            (apply #'cons-symbol *package* first strs))))))
   
   ;;; (assert (equal (list (str-sym "keyword:a") (str-sym "keyword:" "a") (str-sym "a" "sdf")) '(:a :a thrift-generated::asdf)))
   
