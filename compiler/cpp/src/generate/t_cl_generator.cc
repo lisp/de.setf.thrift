@@ -389,6 +389,10 @@ void t_cl_generator::generate_service(t_service* tservice) {
     if ( (*f_iter)->is_oneway() ) {
       f_types_ << endl << indent() << " :oneway t";
     }
+    if ( (*f_iter)->has_doc() ) {
+      f_types_ << endl << indent() << " :documentation \""
+               << cl_docstring((*f_iter)->get_doc()) << "\"";
+  }
     f_types_ << ")";
   }
 
@@ -404,14 +408,14 @@ string t_cl_generator::typespec(t_type *t) {
     return type_name(t);
   } else if (t->is_map()) {
     t_map *m = (t_map*) t;
-    return "(map " + typespec(m->get_key_type()) + " " + 
+    return "(thrift:map " + typespec(m->get_key_type()) + " " + 
       typespec(m->get_val_type()) + ")";
   } else if (t->is_struct() || t->is_xception()) {
     return "(struct " + prefix(type_name(t)) + ")";
   } else if (t->is_list()) {
-    return "(list " + typespec(((t_list*) t)->get_elem_type()) + ")";
+    return "(thrift:list " + typespec(((t_list*) t)->get_elem_type()) + ")";
   } else if (t->is_set()) {
-    return "(set " + typespec(((t_set*) t)->get_elem_type()) + ")";
+    return "(thrift:set " + typespec(((t_set*) t)->get_elem_type()) + ")";
   } else if (t->is_enum()) {
     return "(enum \"" + ((t_enum*) t)->get_name() + "\")";
   } else {
