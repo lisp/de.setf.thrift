@@ -130,7 +130,7 @@
   (:method ((value vector))
     'binary)
   (:method ((value hash-table))
-    'map)
+    'thrift:map)
   (:method ((value list))
     'thrift:list))
 

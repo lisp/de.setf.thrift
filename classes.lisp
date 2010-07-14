@@ -52,7 +52,6 @@
 
 (defclass thrift-exception-class (thrift-class)
   ((condition-class
-    :initarg :condition-class :initform (error "A condition-class is required.")
     :reader class-condition-class
     :documentation "The respective standard condition class of which to make condition,"))
   (:documentation "Each exception declaration yields a thrift-exception-class definition _and_
@@ -144,7 +143,10 @@
     (find-thrift-class (str-sym identifier) errorp))
 
   (:method ((name symbol) &optional (errorp t))
+    "Lookup first in the thrift-specific registry in order to se exception shadows.
+     Otherwise fall back to standard class bindings."
     (cond ((gethash name *thrift-classes*))
+          ((find-class name nil))
           (errorp
            (error "thrift-class not found: ~s" name)))))
 
@@ -165,29 +167,42 @@
 
 
 (defmethod initialize-instance :after ((class thrift-class) &key (identifier (class-name class)))
-  (initialize-thrift-class class :identifier identifier))
+  (initialize-class-identifier class identifier))
 
 
 (defmethod reinitialize-instance :after ((class thrift-class) &key identifier )
   (when identifier
-    (initialize-thrift-class class :identifier identifier)))
+    (initialize-class-identifier class identifier)))
+
+(defmethod initialize-instance :after ((class thrift-exception-class) &key condition-class)
+  (initialize-class-condition-class class condition-class))
 
 
-(defgeneric initialize-thrift-class (class &rest initargs)
-  (declare (dynamic-extent initargs))
-  (:method ((class thrift-class) &rest initargs)
-    (declare (dynamic-extent initargs))
-    ;; nb. dont bind the class here - symmetry to exceptions argues that it be
-    ;; bound in the definition form
-    (destructuring-bind (&key identifier &allow-other-keys) initargs
-      (loop (etypecase identifier
-              ;; initialize instance asserts a value, reinitial does not
-              (null (return))
-              ((or string symbol)
-               (setf (slot-value class 'identifier) (string identifier))
-               (return))
-              (cons
-               (setf identifier (first identifier))))))))
+(defmethod reinitialize-instance :after ((class thrift-exception-class) &key condition-class )
+  (when condition-class
+    (initialize-class-condition-class class condition-class)))
+
+
+
+(defun initialize-class-identifier (class identifier)
+  (loop (etypecase identifier
+          ;; initialize instance asserts a value, reinitial does not
+          (null (return))
+          ((or string symbol)
+           (setf (slot-value class 'identifier) (string identifier))
+           (return))
+          (cons
+           (setf identifier (first identifier))))))
+
+(defun initialize-class-condition-class (class condition-class)
+  (loop (etypecase condition-class
+          ;; initialize instance asserts a value, reinitial does not
+          (null (error "A condition-class is required."))
+          (symbol
+           (setf (slot-value class 'condition-class) condition-class)
+           (return))
+          (cons
+           (setf condition-class (first condition-class))))))
 
 
 (defgeneric class-identifier (class)
@@ -323,6 +338,31 @@
       (class-field-definitions (cons-symbol (symbol-package (class-name class)) (class-name class) :-thrift-class))
       nil)))
 
+
+;;;
+;;; instantiation : provide specialized make- operators which use make-instance or make-condition
+;;; as per metaclass type
+
+(defgeneric make-struct (class &rest initargs)
+  (declare (dynamic-extent initargs))
+
+  (:method ((class thrift-struct-class) &rest initargs)
+    (declare (dynamic-extent initargs))
+    (apply #'make-instance class initargs))
+
+  (:method ((class thrift-exception-class) &rest initargs)
+    (declare (dynamic-extent initargs))
+    (apply #'make-condition class initargs)))
+
+(defgeneric struct-name (class)
+  (:method ((class thrift-struct-class))
+    (class-name class))
+  (:method ((class thrift-exception-class))
+    (class-condition-class class)))
+
+
+;;;
+;;; exceptions
 
 (defmethod unknown-field ((class thrift-class) (name t) (id t) (type t) (value t))
   "The default method for thrift classes does nothing, which is intended to leave the final

@@ -54,7 +54,7 @@
                                                      :protocol (make-test-protocol)
                                                      :name "fieldex" :number -1
                                                      :datum most-negative-fixnum :expected-type `(integer 0 ,most-positive-fixnum))))
-           (typep (nth-value 1 (ignore-errors (invalid-field-size (make-test-protocol) "fieldex" -1 `(integer 0 ,most-positive-fixnum) most-negative-fixnum)))
+           (typep (nth-value 1 (ignore-errors (invalid-field-size (make-test-protocol) -1 "fieldex" `(integer 0 ,most-positive-fixnum) most-negative-fixnum)))
                   'field-size-error)))
 
 (test conditions/field-type-error
@@ -62,14 +62,14 @@
                                                      :protocol (make-test-protocol)
                                                      :structure-type 'test-struct :name "fieldex" :number 17
                                                      :expected-type 'bool :datum 12345)))
-           (typep (nth-value 1 (ignore-errors (invalid-field-type (make-test-protocol) 'test-struct "fieldex" 17 'bool 12345)))
+           (typep (nth-value 1 (ignore-errors (invalid-field-type (make-test-protocol) 'test-struct 17 "fieldex" 'bool 12345)))
                   'field-type-error)))
 
 (test conditions/unknown-field-error
       (and (stringp (princ-to-string (make-condition 'unknown-field-error
                                                      :protocol (make-test-protocol)
                                                      :structure-type 'test-struct :name "fieldex" :number 17 :datum 12345)))
-           (typep (nth-value 1 (ignore-errors (unknown-field (make-test-protocol) 'test-struct 17 "fieldex" 12345)))
+           (typep (nth-value 1 (ignore-errors (unknown-field (make-test-protocol) 17 "fieldex" 'i16 12345)))
                   'null)))
 
 (test conditions/unknown-method-error

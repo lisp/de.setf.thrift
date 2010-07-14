@@ -149,7 +149,8 @@
 
 
 (defmethod stream-write-type ((protocol binary-protocol) type-name)
-  (stream-write-byte (protocol-output-transport protocol) (type-name-code protocol type-name)))
+  (stream-write-byte (protocol-output-transport protocol) (type-name-code protocol type-name))
+  1)
 
 (defmethod stream-write-message-type ((protocol binary-protocol) message-type-name)
   (stream-write-i16 protocol (message-type-code protocol message-type-name)))
@@ -209,17 +210,20 @@
                                            append `((setf (aref buffer ,i) (logand #xff int-value))
                                                     (setf int-value (ash int-value -8)))))))
                 (pack-buffer))
-              (stream-write-sequence (protocol-output-transport protocol) buffer)))
+              (stream-write-sequence (protocol-output-transport protocol) buffer)
+              8))
 
 
 (defmethod stream-write-string ((protocol binary-protocol) string)
   (let ((bytes (funcall (transport-string-encoder protocol) string)))
     (stream-write-i32 protocol (length bytes))
-    (stream-write-sequence (protocol-output-transport protocol) bytes)))
+    (stream-write-sequence (protocol-output-transport protocol) bytes)
+    (+ 4 (length bytes))))
 
 
 (defmethod stream-write-binary ((protocol binary-protocol) bytes)
   (let ((unsigned-bytes (make-array (length bytes) :element-type '(unsigned-byte 8))))
     (stream-write-i32 protocol (length bytes))
     (map-into unsigned-bytes #'unsigned-byte-8 bytes)
-    (stream-write-sequence (protocol-output-transport protocol) unsigned-bytes)))
+    (stream-write-sequence (protocol-output-transport protocol) unsigned-bytes)
+    (+ 4 (length bytes))))

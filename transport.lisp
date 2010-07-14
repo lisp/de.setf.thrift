@@ -73,7 +73,7 @@
 ;;;
 ;;; classes
 
-(defclass transport (stream)
+(defclass transport (#+sbcl sb-gray:fundamental-stream #+ccl stream)
   ((stream :reader transport-stream)
    (direction :initarg :direction :accessor stream-direction))
   (:documentation "The abstract transport class is a specialized stream which wraps a base binary

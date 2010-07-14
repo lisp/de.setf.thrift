@@ -35,18 +35,20 @@
 ;;;   def-response-method
 ;;;   def-service
 ;;;
-;;; The forms resemble those of the standard Lisp operators. The primary distinction is that identifiers are
+;;; The syntax resembles that of the standard Lisp operators. The primary distinction is that identifiers are
 ;;; the original strings from the Thrift IDL source. The macro operators canonicalize and intern these
 ;;; according to the current package and read table case. The original values are retained to use as method
 ;;; and class names for encoding/decoding.
 ;;;
-;;; The expansion process uses class definitions when expanding method codecs and IDL files frequently
-;;; use structures for variable initialization. This suggests the following file organization and
-;;; load order:
+;;; The interface  definitions can incorporate structures in variable definitions, and the service definitions
+;;; entail method definitions, which in turn require structure definitions in order to compile codecs
+;;; in-line. This suggests the following file load order and organization:
 ;;;
-;;;   <service>-types.lisp : (generated) enums, structures, exceptions, services
+;;;   <service>-types.lisp : (generated) enums, structs, exceptions, services
 ;;;   <service>-vars.lisp : (generated) constants
-;;;   <service.lisp : (written) the base function definitions
+;;;   <service.lisp : (authored) the base function definitions
+;;;
+;;; The extra file for constants is required, as the generator emits them before the structs.
 ;;;
 ;;; [1]: $THRIFT/compiler/src/generate/t_cl_generator.cc
 
@@ -70,33 +72,6 @@
 (defun thrift:set (&rest values)
   values)
 
-
-;;; control trace output from macros
-
-(defvar *macroexpand-hooks* ())
-
-(defun macroexpand-hook (macro whole result)
-  (let ((hook (getf macro *macroexpand-hooks*)))
-    (if hook
-      (funcall hook whole result)
-      result)))
-
-(defmacro def-macro (name lambda-list &rest body)
-  (let ((documentation (when (stringp (first body)) (pop body))))
-    `(defmacro ,name (&whole whole ,@lambda-list)
-       ,@(when documentation (list documentation))
-       (let ((expansion (progn ,@body))
-              (hook (getf *macroexpand-hooks* ',name)))
-          (if hook
-            (funcall hook whole expansion)
-            expansion)))))
-
-(defun trace-macro (whole expansion)
-  (format *trace-output* "~&~%~:W~%=>~%~:W" whole expansion)
-  expansion)
-
-;;; (setf (getf *macroexpand-hooks* 'def-constant) 'trace-macro)
-
           
 (defun parm-to-field-decl (parameter-spec)
   "Convert a specialize parameter declaration into the form for a structure field declaration
@@ -111,7 +86,7 @@
 ;;;
 ;;; definition operators
 
-(def-macro def-package (name &key use)
+(defmacro def-package (name &key use)
   (let ((request-name (cons-symbol :keyword name :-request))
         (response-name (cons-symbol :keyword name :-response)))
     `(macrolet ((ensure-package (name &rest options)
@@ -131,7 +106,7 @@
        (ensure-package ,response-name (:use)))))
 
 
-(def-macro def-enum (identifier entries)
+(defmacro def-enum (identifier entries)
   (let ((name (cons-symbol *package* identifier)))
     ;; define the type, leave the keys are string
     (let ((values (mapcar #'rest entries)))
@@ -144,13 +119,13 @@
               ',name))))
 
 
-(def-macro def-constant (identifier val)
+(defmacro def-constant (identifier val)
   "Generate a defparameter form, as the 'constants' are often bound to constructed values."
   (assert (stringp identifier))
   `(defparameter ,(str-sym identifier) ,val))
 
 
-(def-macro def-struct (identifier fields &rest options)
+(defmacro def-struct (identifier fields &rest options)
   "DEF-STRUCT identifier [doc-string] ( field-specifier* ) option*
  [Macro]
 
@@ -185,7 +160,7 @@
                             :accessor ,(str-sym identifier "-" slot-identifier)
                             ,@(when type `(:type ,type))
                             :identifier-number ,id
-                            :identifier-name ,identifier
+                            :identifier-name ,slot-identifier
                             ,@(when default `(:initform ,default))
                             ,@(when o-s `(:optional ,optional))
                             ,@(when documentation `(:documentation ,(string-trim *whitespace* documentation))))))
@@ -198,7 +173,7 @@
              (setf (find-thrift-class ',name) (find-class ',name)))))))
 
 
-(def-macro def-exception (identifier fields &rest options)
+(defmacro def-exception (identifier fields &rest options)
   "DEF-EXCEPTION identifier [doc-string] ( field-specifier* ) option*
  [Macro]
 
@@ -254,40 +229,46 @@
 
 
 
-(defun generate-struct-decoder (prot class field-definitions extra-field-plist)
+(defun generate-struct-decoder (prot class-form field-definitions extra-field-plist)
   "Generate a form which decodes a the given struct fiels in-line.
  PROT : a variable bound to a protocol instance
+ CLASS : a form to be evaluated to compute the expected class
  FIELD-DEFINITIONS : a list of field definitions - either definition metaobjects or definition declarations
  EXTRA-FIELD-PLIST : a variable bound to a plist in which unknown fields are to be cached."
 
-  (with-gensyms (value)
-    `(loop (multiple-value-bind (name id read-field-type)
-                                (stream-read-field-begin ,prot)
-             (when (eq read-field-type 'stop) (return))
-             (case id
-               ,@(loop for fd in field-definitions
-                       for id = (field-definition-identifier-number fd)
-                       for field-type = (field-definition-type fd)
-                       do (list fd id)
-                       collect `(,id 
-                                 (if (equal read-field-type ',(type-category field-type))
-                                   (setf ,(field-definition-name fd)
-                                         (stream-read-value-as ,prot ',field-type))
-                                   (let ((,value (stream-read-value-as ,prot read-field-type)))
-                                     (invalid-field-type ,prot ,class ,id name ',field-type ,value)
-                                     ;; iff it returns
-                                     (setf ,(field-definition-name fd) ,value)))))
-               (t
-                ;; handle unknown fields
-                (let* ((value (stream-read-value-as ,prot read-field-type))
-                       (fd (unknown-field ,class name id read-field-type value)))
-                  (if fd
-                    (setf (getf ,extra-field-plist (field-definition-initarg fd)) value)
-                    (unknown-field ,prot name id read-field-type value)))))
-             (stream-read-field-end ,prot)))))
+  (with-gensyms (value expected-class read-class read-type)
+    `(let* ((,expected-class ,class-form)
+            (,read-class (stream-read-struct-begin ,prot))
+            (,read-type (struct-name ,read-class)))
+       (unless (equal ,read-type (struct-name ,expected-class))
+         (invalid-struct-type ,prot (struct-name ,expected-class) ,read-type))
+       (loop (multiple-value-bind (name id read-field-type)
+                                  (stream-read-field-begin ,prot)
+               (when (eq read-field-type 'stop) (return))
+               (case id
+                 ,@(loop for fd in field-definitions
+                         for id = (field-definition-identifier-number fd)
+                         for field-type = (field-definition-type fd)
+                         do (list fd id)
+                         collect `(,id 
+                                   (if (equal read-field-type ',(type-category field-type))
+                                     (setf ,(field-definition-name fd)
+                                           (stream-read-value-as ,prot ',field-type))
+                                     (let ((,value (stream-read-value-as ,prot read-field-type)))
+                                       (invalid-field-type ,prot ,read-class ,id name ',field-type ,value)
+                                       ;; iff it returns
+                                       (setf ,(field-definition-name fd) ,value)))))
+                 (t
+                  ;; handle unknown fields
+                  (let* ((value (stream-read-value-as ,prot read-field-type))
+                         (fd (unknown-field ,read-class name id read-field-type value)))
+                    (if fd
+                      (setf (getf ,extra-field-plist (field-definition-initarg fd)) value)
+                      (unknown-field ,prot name id read-field-type value)))))
+               (stream-read-field-end ,prot))))))
 
 
-(def-macro def-request-method (name (parameter-list return-type) &rest options)
+(defmacro def-request-method (name (parameter-list return-type) &rest options)
   "Generate a request function definition.
  Augment the base function signature with an initial
  parameter for the connected protocol instance, Use that to manage the message construction,
@@ -315,15 +296,17 @@
            (stream-write-message-begin ,gprot ,identifier 'call
                                        (protocol-next-sequence-number ,gprot))
            ;; use the respective args structure as a template to generate the message
-           (stream-write-struct ,gprot (thrift:map ,@(mapcar #'(lambda (id name) `(cons ,id ,name)) parameter-ids parameter-names))
+           (stream-write-struct ,gprot (thrift:list ,@(mapcar #'(lambda (id name) `(cons ,id ,name)) parameter-ids parameter-names))
                                 ',(str-sym call-struct))
            (stream-write-message-end ,gprot)
            ,(if oneway-p
               nil
-              `(multiple-value-bind (name type sequence)
+              `(multiple-value-bind (request-message-identifier type sequence)
                                     (stream-read-message-begin ,gprot)
                  (unless (eql sequence (protocol-sequence-number ,gprot))
                    (invalid-sequence-number ,gprot sequence (protocol-sequence-number ,gprot)))
+                 (unless (equal ,identifier request-message-identifier)
+                   (warn "response does not match request: ~s, ~s." ,identifier request-message-identifier))
                  (ecase type
                    (reply
                     (let (,@(unless (eq return-type 'void) `((,success nil)))
@@ -342,18 +325,18 @@
                       ,(if (eq return-type 'void) nil success )))
                    ((call oneway)
                     ;; received a call/oneway when expecting a response
-                    (unexpected-request ,gprot name sequence
+                    (unexpected-request ,gprot request-message-identifier sequence
                                         (prog1 (stream-read-struct ,gprot)
                                           (stream-read-message-end ,gprot))))
                    (exception
                     ;; received an exception as a response
-                    (response-exception ,gprot name sequence
+                    (response-exception ,gprot request-message-identifier sequence
                                         (prog1 (stream-read-struct ,gprot)
                                           (stream-read-message-end ,gprot))))))))))))
     
 
 
-(def-macro def-response-method (name (parameter-list return-type) &rest options)
+(defmacro def-response-method (name (parameter-list return-type) &rest options)
   "Generate a response function definition.
  The method is defined with three arguments, a service, a sequence number and a protocol.
  The default method decodes the declared argument struct, invokes the base operator and, depending
@@ -395,12 +378,12 @@
                                  `(prog1
                                     ,application-form
                                     (stream-write-message-begin ,gprot ,identifier 'reply ,seq)
-                                    (stream-write-struct ,gprot (thrift:map) ',(str-sym reply-struct))
+                                    (stream-write-struct ,gprot (thrift:list) ',(str-sym reply-struct))
                                     (stream-write-message-end ,gprot)))
                                 (t
                                  `(let ((result ,application-form))
                                     (stream-write-message-begin ,gprot ,identifier 'reply ,seq)
-                                    (stream-write-struct ,gprot (thrift:map (cons 0 result)) ',(str-sym reply-struct))
+                                    (stream-write-struct ,gprot (thrift:list (cons 0 result)) ',(str-sym reply-struct))
                                     (stream-write-message-end ,gprot)
                                     result)))))
                      (if exceptions
@@ -414,18 +397,21 @@
                                                 ;; sent as a reply in order to effect operation-specific exception
                                                 ;; processing.
                                                 (stream-write-message-begin ,gprot ,identifier 'reply ,seq)
-                                                (stream-write-struct ,gprot (thrift:map (cons ,id condition))
+                                                (stream-write-struct ,gprot (thrift:list (cons ,id condition))
                                                                      ',(str-sym reply-struct))
                                                 (stream-write-message-end ,gprot)
                                                 condition)))))
                        expression))))))))
 
 
-(def-macro def-service (identifier base-services &rest options)
+(defmacro def-service (identifier base-services &rest options)
   "Given the external name for the service, an optional inheritance list, slot definitions
  and a list of method declarations, construct a class definition which include the precedence and the
  slots, and provides method bindings for the response methods as an initialization argument. For each method,
- generate a request/reponse method pair."
+ generate a request/reponse method pair.
+
+ NB. THis must operate as a top-level form in order that the argument structure definitions be
+ available to compile the request/response functions."
   
   (let* ((name (str-sym identifier))
          (class-identifier (second (assoc :class options)))

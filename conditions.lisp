@@ -46,7 +46,7 @@
     :reader thrift-error-type))
   (:report (lambda (error stream)
              (apply #'format stream (thrift-error-format-control error)
-                    (thrift-error-format-arguments stream)))))
+                    (thrift-error-format-arguments error)))))
 
 (defgeneric thrift-error-format-control (error)
   (:method ((error thrift-error))
@@ -55,20 +55,6 @@
 (defgeneric thrift-error-format-arguments (error)
   (:method ((error thrift-error))
     (list (type-of error) (thrift-error-type error))))
-
-
-
-(define-condition application-error (thrift-error)
-  ((type :initform *application-ex-unknown*)
-   (condition :initform nil :initarg :condition :reader application-error-condition)))
-
-(defmethod thrift-error-format-control ((error application-error))
-  (concatenate 'string (call-next-method)
-               "~@[ condition: ~a.~]"))
-
-(defmethod thrift-error-format-arguments ((error application-error))
-  (append (call-next-method)
-          (list (application-error-condition error))))
 
 
 
@@ -87,6 +73,20 @@
 
 
 (define-condition transport-error (thrift-error) ())
+
+
+
+(define-condition application-error (protocol-error)
+  ((type :initform *application-ex-unknown*)
+   (condition :initform nil :initarg :condition :reader application-error-condition)))
+
+(defmethod thrift-error-format-control ((error application-error))
+  (concatenate 'string (call-next-method)
+               "~@[ condition: ~a.~]"))
+
+(defmethod thrift-error-format-arguments ((error application-error))
+  (append (call-next-method)
+          (list (application-error-condition error))))
 
 
 
@@ -154,7 +154,7 @@
 
 (define-condition field-size-error (protocol-error type-error cell-error)
   ((type :initform *protocol-ex-size-limit*)
-   (number  :initarg :identifier-number :reader field-size-error-number))
+   (number  :initarg :number :reader field-size-error-number))
   (:default-initargs :expected-type 'field-size))
 
 (defmethod thrift-error-format-control ((error field-size-error))
@@ -173,7 +173,7 @@
 (define-condition field-type-error (protocol-error type-error cell-error)
   ((type :initform *protocol-ex-invalid-data*)
    (structure-type :initarg :structure-type :reader field-type-error-structure-type)
-   (number  :initarg :identifier-number :reader field-type-error-number)))
+   (number :initarg :number :reader field-type-error-number)))
 
 (defmethod thrift-error-format-control ((error field-type-error))
   (concatenate 'string (call-next-method)
@@ -199,7 +199,7 @@
   (concatenate 'string (call-next-method)
                " sequence number does not match: ~s, expected ~s."))
 
-(defmethod thrift-error-format-arguments ((error protocol-version-error))
+(defmethod thrift-error-format-arguments ((error sequence-number-error))
   (append (call-next-method)
           (list (sequence-number-error-number error) (sequence-number-error-expected-number error))))
 
@@ -209,7 +209,7 @@
 (define-condition unknown-field-error (protocol-error cell-error)
   ((type :initform *protocol-ex-invalid-data*)
    (structure-type :initarg :structure-type :reader unknown-field-error-structure-type)
-   (number  :initarg :id :reader unknown-field-error-number)
+   (number :initarg :number :reader unknown-field-error-number)
    (datum :initarg :datum :reader unknown-field-error-datum)))
 
 (defmethod thrift-error-format-control ((error unknown-field-error))

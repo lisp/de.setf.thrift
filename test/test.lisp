@@ -3,7 +3,8 @@
 (in-package :thrift-test)
 
 ;;; (run-tests "setup/.*")
-;;; (run-tests)
+;;; (thrift-test::run-tests)
+;;; (pprint-tabular t (sort (loop for key being each hash-key of *tests* collect (string key)) #'string-lessp))
 
 (defparameter *test-root-pathname*
   (make-pathname :name nil :type nil :defaults (or *compile-file-pathname* *load-pathname*)))
@@ -12,7 +13,7 @@
 
 (defvar *test-location* #u"thrift://127.0.0.1:9091")
 
-(defvar *test-service* (make-instance 'service :name "Test Root"))
+(defvar *test-service* (make-instance 'service :identifier "Test Root"))
 
 (defvar *test-server-process* nil)
 
@@ -63,7 +64,7 @@
                  (maphash #'run-if-matched *tests*))))))
         (loop for test being each hash-value of *tests* do (run-test test))))
     `(,(or test-names ".*")
-      :succeeded ,(+ succeeded (length failed) (length errored))
+      ,(if (or failed errored) :count :succeeded) ,(+ succeeded (length failed) (length errored))
       ,@(when failed `(:failed (,(length failed) ,@failed)))
       ,@(when errored `(:errored (,(length errored) ,@errored))))))
 
@@ -88,12 +89,12 @@
 ;;;
 ;;;
 
-(defclass test-struct ()
+(defclass test-struct (thrift-object)
   ((field1 :type string :initarg :field1 :accessor test-struct-field1
            :identifier-number 1 :identifier "fieldOne")
    (field2 :type i16 :initarg :field2 :accessor test-struct-field2
            :identifier-number 2 :identifier "fieldTwo"))
-  (:metaclass thrift-class)
+  (:metaclass thrift-struct-class)
   (:identifier "TestStruct"))
 
 
@@ -153,12 +154,12 @@
 
 (defun call-with-test-services (function &rest services)
   (declare (dynamic-extent function))
-  (unwind-protect (progn (setf (thrift::service-base-services *test-service*)
-                               (union (thrift::service-base-services *test-service*)
+  (unwind-protect (progn (setf (service-base-services *test-service*)
+                               (union (service-base-services *test-service*)
                                       services))
                          (funcall function))
-    (setf (thrift::service-base-services *test-service*)
-          (set-difference (thrift::service-base-services *test-service*)
+    (setf (service-base-services *test-service*)
+          (set-difference (service-base-services *test-service*)
                           services))))
 
 (defmacro with-test-services ((protocol &rest services) &body body)
@@ -172,15 +173,15 @@
 ;;;
 
 (test setup/thrift-class
-      (let ((class (find-class 'test-struct)))
-        (and (equal (thrift::class-identifier class) "TestStruct")
-             (every #'(lambda (id name)
-                        (equal (thrift::field-definition-identifier
-                                (find id (thrift::class-field-definitions class)
-                                      :key #'thrift::field-definition-identifier-number))
-                               name))
-                    '(1 2)
-                    '("fieldOne" "fieldTwo")))))
+  (let ((class (find-class 'test-struct)))
+    (and (equal (class-identifier class) "TestStruct")
+         (every #'(lambda (id name)
+                    (equal (field-definition-identifier
+                            (find id (class-field-definitions class)
+                                  :key #'field-definition-identifier-number))
+                           name))
+                '(1 2)
+                '("fieldOne" "fieldTwo")))))
 
 (test setup/test-transport
       (typep (make-test-transport) 'binary-transport))

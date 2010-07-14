@@ -37,31 +37,38 @@
              (prog1 (eql (symbol-value 'a-constant) 1)
                (unintern 'a-constant))))
 
+
+(defgeneric test-struct-too-field1 (struct))
+(defgeneric test-struct-too-field2 (struct))
+(defgeneric test-struct-too-field3 (struct))
+(defgeneric (setf test-struct-too-field2) (value struct))
+
 (test def-struct
-      (locally
-        (declare (ftype (function (t) t) test-struct-field3 test-struct-field2 test-struct-field1))
-        (def-struct "testStruct" ())
-        (def-struct "testStruct"
+      (progn
+        (def-struct "testStructToo" ())
+        (def-struct "testStructToo"
           (("field1" 0 :type i32 :id 1)
            ("field2" nil :type i16 :id 2)
            ("field3" "string value" :type string :id 3)))
-        (let ((struct (make-instance 'test-struct :field1 -1)))
-          (prog1 (and (equal (test-struct-field3 struct) "string value")
+        (let ((struct (make-instance 'test-struct-too :field1 -1)))
+          (prog1 (and (equal (test-struct-too-field3 struct) "string value")
                       (not (slot-boundp struct 'field2))
-                      (equal (test-struct-field1 struct) -1)
-                      (typep (nth-value 1 (ignore-errors (setf (test-struct-field2 struct) 1.1)))
+                      (equal (test-struct-too-field1 struct) -1)
+                      (typep (nth-value 1 (ignore-errors (setf (test-struct-too-field2 struct) 1.1)))
                              ;; some implementation may not constrain
                              ;; some signal a type error
                              #+ccl 'type-error
                              #+sbcl 'null))        ; how to enable slot type checks?
             (mapc #'(lambda (method) (remove-method (c2mop:method-generic-function method) method))
-                  (c2mop:specializer-direct-methods (find-class 'test-struct)))
-            (setf (find-class 'test-struct) nil)))))
+                  (c2mop:specializer-direct-methods (find-class 'test-struct-too)))
+            (setf (find-class 'test-struct-too) nil)))))
+
+
+(defgeneric test-exception-reason (exception))
 
 (test def-exception
-      (locally
-        (declare (ftype (function (t) t) test-exception-reason))
-        (def-exception "testException" (("reason" nil :type string :id 1)))
+      (progn
+        (eval '(def-exception "testException" (("reason" nil :type string :id 1))))
         (let ((ex (make-condition 'test-exception :reason "testing")))
           (prog1 (and (equal (test-exception-reason ex) "testing")
                       (eq (cl:type-of (nth-value 1 (ignore-errors (error ex))))
@@ -70,28 +77,31 @@
             (mapc #'(lambda (method) (remove-method (c2mop:method-generic-function method) method))
                   (c2mop:specializer-direct-methods (find-class 'test-exception)))
             (mapc #'(lambda (method) (remove-method (c2mop:method-generic-function method) method))
-                  (c2mop:specializer-direct-methods (find-class 'test-exception-thrift-class)))
+                  (c2mop:specializer-direct-methods (find-class 'test-exception-exception-class)))
             (setf (find-class 'test-exception) nil)
-            (setf (find-class 'test-exception-thrift-class) nil)))))
+            (setf (find-class 'test-exception-exception-class) nil)))))
 
 
 
 (test def-service
       (progn (defun test-method (arg1 arg2) (format nil "~a ~a" arg1 arg2))
-             (def-service "TestService" nil
-               (:method "testMethod" ((("arg1" i32 1) ("arg2" string 2)) string)))
+             (eval '(def-service "TestService" nil
+                      (:method "testMethod" ((("arg1" i32 1) ("arg2" string 2)) string))))
              (let (request-protocol
                    response-protocol
                    (run-response-result nil))
-               (flet ((run-response (request-protocol)
-                        (rewind request-protocol)
-                        (multiple-value-bind (name type seq)
-                                             (thrift::stream-read-message-begin response-protocol)
-                          (declare (ignore seq))
-                          (setf run-response-result
-                                (when (and (equal name "testMethod")
-                                           (eq type 'call))
-                                  (funcall 'thrift-test-response::test-method t t response-protocol))))))
+               (flet ((run-response (request-stream)
+                        (rewind request-stream)
+                        (multiple-value-bind (identifier type seq)
+                                             (stream-read-message-begin response-protocol)
+                          (cond ((and (equal identifier "testMethod") (eq type 'call))
+                                 (setf run-response-result
+                                       (funcall 'thrift-test-response::test-method t seq response-protocol)))
+                                (t
+                                 (unknown-method response-protocol identifier seq
+                                                 (prog1 (stream-read-struct response-protocol)
+                                                   (stream-read-message-end response-protocol))))))))
+
                  (multiple-value-setq (request-protocol response-protocol)
                    (make-test-protocol-peers :request-hook #'run-response))
                  
@@ -101,8 +111,9 @@
                              (equal run-response-result "1 testing"))
                    (fmakunbound 'test-method)
                    (fmakunbound 'thrift-test-request::test-method)
-                   (fmakunbound 'thrift-test-response::test-method))))))
-
+                   (fmakunbound 'thrift-test-response::test-method)
+                   )))))
+;;; (run-tests "def-service")
 
 
 

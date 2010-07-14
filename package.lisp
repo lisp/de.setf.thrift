@@ -43,6 +43,9 @@
    :bool
    :byte
    :call
+   :class-condition-class
+   :class-field-definitions
+   :class-identifier
    :class-not-found
    :class-not-found-error
    :client with-client
@@ -59,8 +62,16 @@
    :enum
    :enum-type-error
    :exception
+   :field-definition-identifier
+   :field-definition-identifier-number
+   :field-definition-initarg
+   :field-definition-name
+   :field-definition-optional
+   :field-definition-reader
+   :field-definition-type
    :field-size-error
    :field-type-error
+   :method-definition
    :i08
    :i16
    :i32
@@ -75,7 +86,7 @@
    :map
    :protocol
    :protocol-error
-   :protocol-error
+   :protocol-field-id-mode
    :protocol-input-transport
    :protocol-output-transport
    :protocol-version-error
@@ -83,6 +94,9 @@
    :serve
    :serve simple-server handler
    :service
+   :service-base-services
+   :service-identifier
+   :service-package
    :set
    :shared-service
    :stream-read-binary
@@ -94,12 +108,22 @@
    :stream-read-i32
    :stream-read-i64
    :stream-read-list
+   :stream-read-list-begin
+   :stream-read-list-end
    :stream-read-map
+   :stream-read-map-begin
+   :stream-read-map-end
    :stream-read-message
+   :stream-read-message-begin
+   :stream-read-message-end
    :stream-read-message-type
    :stream-read-set
+   :stream-read-set-begin
+   :stream-read-set-end
    :stream-read-string
    :stream-read-struct
+   :stream-read-struct-begin
+   :stream-read-struct-end
    :stream-read-type
    :stream-write-binary
    :stream-write-bool
@@ -119,13 +143,15 @@
    :stream-write-type
    :string
    :struct
+   :struct-name
    :struct-type-error
    :thrift
    :thrift-class
    :thrift-error
-   :thrift-error
+   :thrift-object
+   :thrift-struct-class
+   :thrift-exception-class
    :transport
-   :transport-error
    :transport-error
    :type-of
    :unknown-field
@@ -138,6 +164,7 @@
 
 (defpackage :org.apache.thrift.implementation
   (:use :common-lisp :org.apache.thrift)
+  (:nicknames :thrift.implementation)
   
   (:documentation "The is the package for the thrift implementation. It exports nothing, uses the
  :common-lisp and :thrift package for access to the respective interfaces. Those names which conflict, eg.

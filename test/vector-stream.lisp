@@ -53,7 +53,7 @@
   (:default-initargs :direction :output))
 
 (defclass vector-stream-transport (vector-input-stream vector-output-stream binary-transport)
-  ())
+  ((stream :initform nil)))
 
 
 (defun make-vector-stream-buffer (length &optional (type *binary-transport-element-type*))
@@ -113,6 +113,11 @@
 (defmethod stream-force-output ((stream vector-stream))
   (let ((hook (stream-force-output-hook stream)))
     (when hook (funcall hook stream))))
+
+#-mcl
+(defmethod open-stream-p ((stream vector-stream))
+  t)
+
 
 ;;;
 ;;; input
