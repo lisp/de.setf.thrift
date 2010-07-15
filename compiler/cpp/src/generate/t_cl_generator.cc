@@ -324,6 +324,9 @@ void t_cl_generator::generate_cl_struct_internal(std::ofstream& out, t_struct* t
         ( (NULL != value) ? render_const_value(type, value) : "nil" ) <<
         " :type " << typespec((*m_iter)->get_type()) <<
         " :id " << (*m_iter)->get_key();
+    if ( (*m_iter)->get_req() == t_field::T_OPTIONAL ) {
+      out << " :optional t";
+    }
     if ( (*m_iter)->has_doc()) {
       out << " :documentation \"" << cl_docstring((*m_iter)->get_doc()) << "\"";
     }
