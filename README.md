@@ -226,11 +226,13 @@ An demonstration of access through the Cassandra API is among the READMES[[9]].
 Issues
 ------
 
-### optional fields : Where the IDL declares a field options, the def-struct form includes no
+### optional fields 
+ Where the IDL declares a field options, the def-struct form includes no
  initform for the slot and the encoding operator skips an unbound slot. This leave some ambiguity
  with bool fields.
 
-### namespace - package equivalence : The IDL specifies a single namespace. The Lisp binding uses
+### namespace - package equivalence
+ The IDL specifies a single namespace. The Lisp binding uses
  three: the implementation, the request interface, and the response interface.
  The current pattern is:
 
@@ -240,8 +242,8 @@ Issues
     shadow all implementation function names.
   * _namespace_`-response` : response functions
 
-
-### instantiation protocol : struct classes are standard classes and exception classes are
+### instantiation protocol :
+ struct classes are standard classes and exception classes are
  whatever the implementation prescribes. decoders apply make-struct to an initrgs list.
  particularly at the service end, there are advantages to resourcing structs and decoding
  with direct side-effects on slot-values
