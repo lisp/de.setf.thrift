@@ -36,6 +36,7 @@
 ;;; base data types in terms of signed bytes and unsigned byte sequences. It then delegates to
 ;;; its input/output transports to decode and encode that data in terms of the transport's
 ;;; representation.
+;;; nb. there is a bnf, protocols are observed to eliminate and/or reorder fields at will. whatever.
 
 ;;; The stream interface operators are implemented in two forms. A generic interface is specialized
 ;;; by protocol and/or actual data argument type. In addition a compiler-macro complement performs
@@ -199,7 +200,9 @@
    (version-number :initarg :version-number :reader protocol-version-number)
    (sequence-number :initform 0 :accessor protocol-sequence-number)
    (field-id-mode :initarg :field-key :reader protocol-field-id-mode
-                  :type (member :identifier-number :identifier-name))))
+                  :type (member :identifier-number :identifier-name))
+   (struct-id-mode :initarg :struct-id-mode :reader protocol-struct-id-mode
+                   :type (member :identifier-name :none))))
 
 
 (defclass encoded-protocol (protocol)
@@ -353,8 +356,12 @@
 
 
 (defmethod stream-read-struct-begin ((protocol protocol))
-  (let ((name (stream-read-string protocol)))
-    (protocol-find-thrift-class protocol name)))
+  (ecase (protocol-struct-id-mode protocol)
+    (:identifier-name
+     (let ((name (stream-read-string protocol)))
+       (protocol-find-thrift-class protocol name)))
+    (:none
+     (find-class 'list))))
 
 (defmethod stream-read-struct-end ((protocol protocol)))
 
@@ -369,61 +376,51 @@
   ;; apply to exceptions. Given both cases, this is coded to stay symmetric.
   (let* ((class (stream-read-struct-begin protocol))
          (type (struct-name class)))
-    (unless (or (null expected-type) (equal type expected-type))
-      (invalid-struct-type protocol expected-type type))
-    (if (subtypep type 'condition)
-      ;; allocation-instance and setf slot-value) are not standard for conditions
-      ;; if class-slots (as required by class-field-definitions) is not defined, this will need changes
-      (let ((initargs ())
-            (fields (class-field-definitions class))
-            (fd nil))
-        (loop (multiple-value-bind (value name id field-type)
-                                   (stream-read-field protocol)
-                (cond ((eq field-type 'stop)
-                       (stream-read-struct-end protocol)
-                       (return (apply #'make-condition type initargs)))
-                      ((setf fd (or (find id fields :key #'field-definition-identifier-number :test #'eql)
-                                    (unknown-field class id name field-type value)))
-                       (setf (getf initargs (field-definition-initarg fd)) value))
-                      (t
-                       (unknown-field protocol id name field-type value))))))
-      (let* ((instance (allocate-instance class))
-             (fields (class-field-definitions class))
-             (fd nil))
-        (loop (multiple-value-bind (value name id field-type)
-                                   (stream-read-field protocol)
-                (cond ((eq field-type 'stop)
-                       (stream-read-struct-end protocol)
-                       (return instance))
-                      ((setf fd (or (find id fields :key #'field-definition-identifier-number :test #'eql)
-                                    (unknown-field class id name field-type value)))
-                       (setf (slot-value instance (field-definition-name fd))
-                             value))
-                      (t
-                       (unknown-field protocol id name field-type value)))))))))
-
-#+(or)                                  ; see below for the slot-value version
-(define-compiler-macro stream-read-struct (&whole form prot &optional type &environment env)
-  "Iff the type is a constant, compile the decoder inline. If class is not defined, signal an error.
- The intended use is to compile IDL files, for which the code generator and the definition macros
- arrange that structure definitions preceed references."
-  
-  (expand-iff-constant-types (type) form
-    (with-gensyms (expected-class)
-      (with-optional-gensyms (prot) env
-        (with-gensyms (extra-initargs)
-          (let* ((class (find-thrift-class type))
-                 (field-definitions (class-field-definitions class)))
-            `(let (,@(loop for fd in field-definitions
-                           collect (list (field-definition-name fd) nil))
-                   (,extra-initargs nil)
-                   (,expected-class (find-thrift-class ',type)))
-               ,(generate-struct-decoder prot expected-class field-definitions extra-initargs)
-               (apply #'make-struct ,expected-class
-                      ,@(loop for fd in field-definitions
-                              nconc (list (field-definition-initarg fd) (field-definition-name fd)))
-                      ,extra-initargs))))))))
-
+    (if (null expected-type)
+      (setf expected-type type)
+      (unless (or (eq type 'list) (eq type expected-type))
+        (invalid-struct-type protocol expected-type type)))
+    (cond ((eq type 'list)              ; anonymous struct
+           ;;;!!! untested
+           (let ((struct ()))
+             (loop (multiple-value-bind (value name id field-type)
+                                        (stream-read-field protocol)
+                     (cond ((eq field-type 'stop)
+                            (stream-read-struct-end protocol)
+                            (return struct))
+                           (t
+                            (setf struct (acons (or name id) value struct))))))))
+          ((subtypep type 'condition)
+           ;; allocation-instance and setf slot-value) are not standard for conditions
+           ;; if class-slots (as required by class-field-definitions) is not defined, this will need changes
+           (let ((initargs ())
+                 (fields (class-field-definitions class))
+                 (fd nil))
+             (loop (multiple-value-bind (value name id field-type)
+                                        (stream-read-field protocol)
+                     (cond ((eq field-type 'stop)
+                            (stream-read-struct-end protocol)
+                            (return (apply #'make-condition type initargs)))
+                           ((setf fd (or (find id fields :key #'field-definition-identifier-number :test #'eql)
+                                         (unknown-field class id name field-type value)))
+                            (setf (getf initargs (field-definition-initarg fd)) value))
+                           (t
+                            (unknown-field protocol id name field-type value)))))))
+          (t
+           (let* ((instance (allocate-instance class))
+                  (fields (class-field-definitions class))
+                  (fd nil))
+             (loop (multiple-value-bind (value name id field-type)
+                                        (stream-read-field protocol)
+                     (cond ((eq field-type 'stop)
+                            (stream-read-struct-end protocol)
+                            (return instance))
+                           ((setf fd (or (find id fields :key #'field-definition-identifier-number :test #'eql)
+                                         (unknown-field class id name field-type value)))
+                            (setf (slot-value instance (field-definition-name fd))
+                                  value))
+                           (t
+                            (unknown-field protocol id name field-type value))))))))))
 
 (define-compiler-macro stream-read-struct (&whole form prot &optional type instance &environment env)
   "Iff the type is a constant, compile the decoder inline. If class is not defined, signal an error.
@@ -459,6 +456,29 @@
                  (when ,initargs
                    (apply #'reinitialize-instance ,struct ,initargs))
                  ,struct))))))))
+
+#+(or)                                  ; alternative version with make instance
+(define-compiler-macro stream-read-struct (&whole form prot &optional type &environment env)
+  "Iff the type is a constant, compile the decoder inline. If class is not defined, signal an error.
+ The intended use is to compile IDL files, for which the code generator and the definition macros
+ arrange that structure definitions preceed references."
+  
+  (expand-iff-constant-types (type) form
+    (with-gensyms (expected-class)
+      (with-optional-gensyms (prot) env
+        (with-gensyms (extra-initargs)
+          (let* ((class (find-thrift-class type))
+                 (field-definitions (class-field-definitions class)))
+            `(let (,@(loop for fd in field-definitions
+                           collect (list (field-definition-name fd) nil))
+                   (,extra-initargs nil)
+                   (,expected-class (find-thrift-class ',type)))
+               ,(generate-struct-decoder prot expected-class field-definitions extra-initargs)
+               (apply #'make-struct ,expected-class
+                      ,@(loop for fd in field-definitions
+                              nconc (list (field-definition-initarg fd) (field-definition-name fd)))
+                      ,extra-initargs))))))))
+
 
 
 
@@ -758,7 +778,11 @@
 
 
 (defmethod stream-write-struct-begin ((protocol protocol) (name string))
-  (stream-write-string protocol name))
+  (ecase (protocol-struct-id-mode protocol)
+    (:identifier-name
+     (stream-write-string protocol name))
+    (:none
+     nil)))
 
 (defmethod stream-write-struct-end ((protocol protocol)))
 

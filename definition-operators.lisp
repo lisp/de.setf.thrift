@@ -285,7 +285,7 @@
     `(let* ((,expected-class ,class-form)
             (,read-class (stream-read-struct-begin ,prot))
             (,read-type (struct-name ,read-class)))
-       (unless (equal ,read-type (struct-name ,expected-class))
+       (unless (or (eq ,read-type 'list) (equal ,read-type (struct-name ,expected-class)))
          (invalid-struct-type ,prot (struct-name ,expected-class) ,read-type))
        (loop (multiple-value-bind (name id read-field-type)
                                   (stream-read-field-begin ,prot)
