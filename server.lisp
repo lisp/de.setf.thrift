@@ -95,7 +95,7 @@
 
 (defmethod print-object ((object service) stream)
   (print-unreadable-object (object stream :identity t :type t)
-    (format stream "~@[~a~]" (service-name object))))
+    (format stream "~@[~a~]" (service-identifier object))))
 
 (defgeneric method-definition (service identifier)
   (:method ((service service) (identifier string))
