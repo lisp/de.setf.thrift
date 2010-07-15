@@ -78,6 +78,7 @@
            (equal (test-struct-field1 response) "one")
            (equal (test-struct-field2 response) 2)))))
 
+
 (test protocol.stream-read/write-struct
   (let ((struct (make-instance 'test-struct :field1 "one" :field2 2))
         (stream (make-test-protocol)))
@@ -88,6 +89,7 @@
            (equal (test-struct-field1 result) "one")
            (equal (test-struct-field2 result) 2)))))
 
+
 (test protocol.stream-read/write-struct.inline
   (let ((struct (make-instance 'test-struct :field1 "one" :field2 2))
         (stream (make-test-protocol)))
@@ -96,6 +98,19 @@
     (let ((result (stream-read-struct stream 'test-struct)))
       (and (typep result 'test-struct)
            (equal (test-struct-field1 result) "one")
+           (equal (test-struct-field2 result) 2)))))
+
+
+(test protocol.stream-read/write-struct.optional
+  (let ((struct (make-instance 'test-large-struct :field1 1 :field2 2))
+        (stream (make-test-protocol)))
+    (assert (not (slot-boundp struct 'field3)))
+    (stream-write-struct stream struct 'test-large-struct)
+    (rewind stream)
+    (let ((result (stream-read-struct stream 'test-large-struct)))
+      (and (typep result 'test-large-struct)
+           (not (slot-boundp result 'field3))
+           (equal (test-struct-field1 result) 1)
            (equal (test-struct-field2 result) 2)))))
 
 
@@ -142,3 +157,60 @@
            `((stream-read-set stream-write-set
                                (t nil) (1 2 3) (32767 1 -1 -32768))))))
 
+
+#+(or ccl sbcl)
+(defun time-struct-io (&optional (count 1024))
+  (let ((initargs '(:field1 1 :field2 2 :field3 3 :field4 4 :field5 5
+                    :field6 6 :field7 7 :field8 8 :field9 9 :field10 10))
+        (stream (make-test-protocol))
+        (bound-count 0)
+        (gctime nil)
+        (slot-count 10))
+    (flet ((gctime () #+ccl (ccl::gctime) #+sbcl sb-ext:*GC-RUN-TIME*)
+           (gcbytes () #+ccl (ccl::total-bytes-allocated)
+                       #+sbcl (nth-value 3 (sb-impl::time-get-sys-info))))
+      (format *trace-output* "~&slots,~10Tbound,~20Tdynamic-ms,~36Tstatic-ms,~52Tstatic/w-ms,~68Tdynamic-kb,~84Tstatic-kb,~100Tstatic/w-kb")
+      (loop (when (eql gctime (setf gctime (gctime)))
+              (incf bound-count)
+              (when (> bound-count 10) (return)))
+            (let ((struct (apply #'make-instance 'test-large-struct
+                                 (subseq initargs 0 (* bound-count 2))))
+                  (result (apply #'make-instance 'test-large-struct nil))
+                  (dynamic-time 0)
+                  (static-time 0)
+                  (static-with-time 0)
+                  (dynamic-bytes 0)
+                  (static-bytes 0)
+                  (static-with-bytes 0))
+              (let ((time (get-internal-run-time))
+                    (bytes (gcbytes)))
+                (dotimes (i count)
+                  (rewind stream)
+                  (stream-write-struct stream struct)
+                  (rewind stream)
+                  (stream-read-struct stream))
+                (setf dynamic-time (- (get-internal-run-time) time)
+                      dynamic-bytes (- (gcbytes) bytes)))
+              (let ((time (get-internal-run-time))
+                    (bytes (gcbytes)))
+                (dotimes (i count)
+                  (rewind stream)
+                  (stream-write-struct stream struct 'test-large-struct)
+                  (rewind stream)
+                  (stream-read-struct stream 'test-large-struct))
+                (setf static-time (- (get-internal-run-time) time)
+                      static-bytes (- (gcbytes) bytes)))
+              (let ((time (get-internal-run-time))
+                    (bytes (gcbytes)))
+                (dotimes (i count)
+                  (rewind stream)
+                  (stream-write-struct stream struct 'test-large-struct)
+                  (rewind stream)
+                  (stream-read-struct stream 'test-large-struct result))
+                (setf static-with-time (- (get-internal-run-time) time)
+                      static-with-bytes (- (gcbytes) bytes)))
+              (format *trace-output* "~%~d,~10T~d,~20T~d,~36T~d,~52T~d,~68T~d,~84T~d,~100T~d"
+                      slot-count bound-count
+                      dynamic-time static-time static-with-time
+                      dynamic-bytes static-bytes static-with-bytes))))))
+;;; (time-struct-io)

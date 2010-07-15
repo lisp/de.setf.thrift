@@ -97,6 +97,30 @@
   (:metaclass thrift-struct-class)
   (:identifier "TestStruct"))
 
+(defclass test-large-struct (thrift-object)
+  ((field1 :type i16 :initarg :field1 :accessor test-struct-field1
+           :identifier-number 1 :identifier "fieldOne" :optional t)
+   (field2 :type i16 :initarg :field2 :accessor test-struct-field2
+           :identifier-number 2 :identifier "fieldTwo" :optional t)
+   (field3 :type i16 :initarg :field3 :accessor test-struct-field3
+           :identifier-number 3 :identifier "fieldThree" :optional t)
+   (field4 :type i16 :initarg :field4 :accessor test-struct-field4
+           :identifier-number 4 :identifier "fieldfour" :optional t)
+   (field5 :type i16 :initarg :field5 :accessor test-struct-field5
+           :identifier-number 5 :identifier "fieldFive" :optional t)
+   (field6 :type i16 :initarg :field6 :accessor test-struct-field6
+           :identifier-number 6 :identifier "fieldSix" :optional t)
+   (field7 :type i16 :initarg :field7 :accessor test-struct-field7
+           :identifier-number 7 :identifier "fieldSeven" :optional t)
+   (field8 :type i16 :initarg :field8 :accessor test-struct-field8
+           :identifier-number 8 :identifier "fieldEight" :optional t)
+   (field9 :type i16 :initarg :field9 :accessor test-struct-field9
+           :identifier-number 9 :identifier "fieldNine" :optional t)
+   (field10 :type i16 :initarg :field10 :accessor test-struct-field10
+           :identifier-number 10 :identifier "fieldTen" :optional t))
+  (:metaclass thrift-struct-class)
+  (:identifier "TestLargeStruct"))
+
 
 
 (defun make-test-transport (&rest initargs)
