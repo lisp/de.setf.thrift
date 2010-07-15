@@ -153,7 +153,7 @@ void t_cl_generator::package_def(std::ofstream &out, string name) {
 }
 
 void t_cl_generator::package_in(std::ofstream &out, string name) {
-  out << "(in-package :" << package() << ")" << endl << endl;
+  out << "(cl:in-package :" << package() << ")" << endl << endl;
 }
 
 void t_cl_generator::generate_typedef(t_typedef* ttypedef) {}
