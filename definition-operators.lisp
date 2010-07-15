@@ -113,15 +113,14 @@
     `(eval-when (:load-toplevel :compile-toplevel :execute)
        (unless (find-package ,name)
          (defpackage ,name
-           (:use :common-lisp :thrift ,@use)
-           (:shadowing-import-from :common-lisp :byte :list :map :set :type-of)
+           (:use :thrift ,@use)
+           (:import-from :common-lisp nil)
            (:documentation ,(format nil "This is the application interface package for ~a.
  It uses the generic THRIFT package for access to the library interface." name))))
        
        (unless (find-package ,implementation-name)
          (defpackage ,implementation-name
-           (:use :common-lisp :thrift ,name)
-           (:shadowing-import-from :common-lisp :byte :list :map :set :type-of)
+           (:use :thrift ,name)
            (:documentation ,(format nil "This is the implementation package for ~a.
  It uses the generic THRIFT package for access to the library interface, and
  the ~a package for access to the service interface." name name))))
@@ -468,7 +467,7 @@
  NB. THis must operate as a top-level form in order that the argument structure definitions be
  available to compile the request/response functions."
   
-  (let* ((name (implementation-str-sym identifier))
+  (let* ((name (str-sym identifier))
          (class-identifier (second (assoc :class options)))
          (class (if class-identifier (str-sym class-identifier) 'service))
          (methods (remove :method options :test-not #'eq :key #'first))
