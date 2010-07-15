@@ -27,7 +27,8 @@
 ;;; classes
 
 (defclass binary-protocol (encoded-protocol)
-  ((field-id-mode :initform :identifier-number :allocation :class))
+  ((field-id-mode :initform :identifier-number :allocation :class)
+   (struct-id-mode :initform :none :allocation :class))
   (:default-initargs
     :version-id #x80
     :version-number #x01))
