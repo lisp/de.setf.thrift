@@ -167,12 +167,19 @@
     (apply #'transport-close stream args)))
 
 
-
+#-sbcl
 (defmethod stream-finish-output ((transport transport))
   (stream-finish-output (transport-stream transport)))
+#+sbcl
+(defmethod stream-finish-output ((transport transport))
+  (finish-output (transport-stream transport)))
 
+#-sbcl
 (defmethod stream-force-output ((transport transport))
   (stream-force-output (transport-stream transport)))
+#+sbcl
+(defmethod stream-force-output ((transport transport))
+  (force-output (transport-stream transport)))
 
 
 ;;;
