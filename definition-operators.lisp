@@ -48,7 +48,28 @@
 ;;;   <service>-vars.lisp : (generated) constants
 ;;;   <service.lisp : (authored) the base function definitions
 ;;;
-;;; The extra file for constants is required, as the generator emits them before the structs.
+;;; The extra file for constants is required, as the generator emits them before the structs. Each operation
+;;; comprises three phases:
+;;;
+;;;  * The client invokes a proxy to communicate with the service. This sends a request message and
+;;;    interprets results.
+;;;  * The service accepts messages and processes them with individual operators which decode arguments,
+;;;    invoke the implementation operator, and encode the response to return to the client.
+;;;  * The implementation operator itself.
+;;;
+;;; The three operators are defined as homologues in three related packages:
+;;;
+;;;  * <namespace> : This, the application interface package, has the respective namespace name.
+;;;    It is the home package for the names for the request proxy function, structure and exception types
+;;;    and accessors, enum types, and constants
+;;;  * <namespace>-implementation : This is the home package for implementation function names. It uses
+;;;    the application interface package, but shadows all interface function names, and it cross-exports
+;;;    all other interface symbols.
+;;;  * <namespace>-response : This is the home package for response function names. It needs no other
+;;;    symbols as the functions only intended role is bound to service instances.
+;;;
+;;; The translated IDL files each begin with an in-package form for the application interface package and
+;;; other symbols are generated relative to that.
 ;;;
 ;;; [1]: $THRIFT/compiler/src/generate/t_cl_generator.cc
 
@@ -87,28 +108,34 @@
 ;;; definition operators
 
 (defmacro def-package (name &key use)
-  (let ((request-name (cons-symbol :keyword name :-request))
+  (let ((implementation-name (cons-symbol :keyword name :-implementation))
         (response-name (cons-symbol :keyword name :-response)))
-    `(macrolet ((ensure-package (name &rest options)
-                  `(let ((package (find-package ',name)))
-                     (cond (package 
-                            ,@(let ((use (assoc :use options)))
-                                (when use `((use-package ',(rest use) package))))
-                            package)
-                           (t
-                            (defpackage ,name ,@options))))))
-       ;; the 'application' package is linked to cl and thrift with shodows
-       (eval-when (:load-toplevel :compile-toplevel :execute)
-         (ensure-package ,name
-                         (:use :common-lisp :thrift ,@use)
-                         (:shadowing-import-from :common-lisp :byte :list :map :set :type-of))
-         ;; the request/respone packages are isolated
-         (ensure-package ,request-name (:use))
-         (ensure-package ,response-name (:use))))))
+    `(eval-when (:load-toplevel :compile-toplevel :execute)
+       (unless (find-package ,name)
+         (defpackage ,name
+           (:use :common-lisp :thrift ,@use)
+           (:shadowing-import-from :common-lisp :byte :list :map :set :type-of)
+           (:documentation ,(format nil "This is the application interface package for ~a.
+ It uses the generic THRIFT package for access to the library interface." name))))
+       
+       (unless (find-package ,implementation-name)
+         (defpackage ,implementation-name
+           (:use :common-lisp :thrift ,name)
+           (:shadowing-import-from :common-lisp :byte :list :map :set :type-of)
+           (:documentation ,(format nil "This is the implementation package for ~a.
+ It uses the generic THRIFT package for access to the library interface, and
+ the ~a package for access to the service interface." name name))))
+       
+       (unless (find-package ,response-name)
+         (defpackage ,implementation-name
+           (:use)
+           (:documentation ,(format nil "This is the response package for ~a. It is isolated." name)))))))
+
 
 
 (defmacro def-enum (identifier entries)
-  (let ((name (cons-symbol *package* identifier))
+  (assert (stringp identifier))
+  (let ((name (str-sym identifier))
         (value-names (mapcar #'(lambda (entry) (str-sym identifier "." (car entry))) entries)))
     ;; define the type, leave the keys are string
     (let ((values (mapcar #'rest entries)))
@@ -123,10 +150,12 @@
               ',name))))
 
 
+
 (defmacro def-constant (identifier val)
   "Generate a defparameter form, as the 'constants' are often bound to constructed values."
   (assert (stringp identifier))
   `(defparameter ,(str-sym identifier) ,val))
+
 
 
 (defmacro def-struct (identifier fields &rest options)
@@ -143,31 +172,36 @@
  metaobject for codec use. Options allow for an explicit identifier, a metacoal other than thrift-struct-class,
  and a documentation string.
 
- The class is bound to its name as bout the thrift class and CLOS class."
+ The class is bound to its name as both the thrift class and CLOS class."
 
   (let ((metaclass (or (second (assoc :metaclass options)) 'thrift-struct-class))
         (identifier (or (second (assoc :identifier options)) identifier))
         (condition-class (second (assoc :condition-class options)))
-        (name (cons-request-symbol identifier))
-        (make-name (cons-request-symbol "make-" identifier))
+        (name (str-sym identifier))
+        (make-name (str-sym "make-" identifier))
         (slot-names nil)
+        (accessor-names nil)
         (documentation nil))
     (when (stringp fields)
       (shiftf documentation fields (pop options)))
     (setf slot-names (loop for (identifier) in fields collect (str-sym identifier)))
+    (setf accessor-names (loop for (identifier) in fields collect (str-sym identifier "-" identifier)))
     ;; make the definitions available to compile codecs
     `(eval-when (:compile-toplevel :load-toplevel :execute)
-       (defun ,make-name (&rest -initargs- &key ,@slot-names)
-         (declare (ignore ,@slot-names))
-         (apply #'make-instance ',name -initargs-))
+       ,@(unless condition-class
+           `((defun ,make-name (&rest -initargs- &key ,@slot-names)
+               (declare (ignore ,@slot-names))
+               (apply #'make-instance ',name -initargs-))))
        (defclass ,name (thrift-object)
          ,(loop for field in fields
+                for slot-name in slot-names
+                for slot-accessor-name in accessor-names
                 collect (destructuring-bind (slot-identifier default &key type id documentation (optional nil o-s))
                                             field
                           (assert (typep id 'fixnum))
-                          `(,(str-sym slot-identifier)
+                          `(,slot-name
                             :initarg ,(cons-symbol :keyword slot-identifier)
-                            :accessor ,(cons-request-symbol identifier "-" slot-identifier)
+                            :accessor ,slot-accessor-name
                             ,@(when type `(:type ,type))
                             :identifier-number ,id
                             :identifier-name ,slot-identifier
@@ -180,8 +214,7 @@
          ,@(when documentation `((:documentation ,(string-trim *whitespace* documentation)))))
        ,@(unless (eq metaclass 'thrift-exception-class)
            `((export '(,name ,make-name
-                       ,@(loop for (slot-identifier) in fields
-                               collect (cons-request-symbol identifier "-" slot-identifier)))
+                       )
                      (symbol-package ',name))
              (setf (find-thrift-class ',name) (find-class ',name)))))))
 
@@ -435,7 +468,7 @@
  NB. THis must operate as a top-level form in order that the argument structure definitions be
  available to compile the request/response functions."
   
-  (let* ((name (str-sym identifier))
+  (let* ((name (implementation-str-sym identifier))
          (class-identifier (second (assoc :class options)))
          (class (if class-identifier (str-sym class-identifier) 'service))
          (methods (remove :method options :test-not #'eq :key #'first))
@@ -445,23 +478,28 @@
          (initargs (loop for (key . rest) in options
                          unless (member key '(:service-class :method :documentation))
                          collect key
-                         and collect (list 'quote rest))))
+                         and collect (list 'quote rest)))
+         (method-interfaces (loop for (nil identifier (parameter-list return-type)) in methods
+                                  collect `(,(str-sym identifier)
+                                            ,(mapcar #'str-sym (mapcar #'first parameter-list))
+                                            ,return-type))))
 
     `(progn ,@(mapcan #'(lambda (method-declaration)
                           (destructuring-bind (identifier (parameter-list return-type) &key (oneway nil) (exceptions nil)
-                                                          (implementation-function (str-sym  identifier))
+                                                          (implementation-function-name (implementation-str-sym identifier))
                                                           documentation)
                                               (rest method-declaration)
                             (let* ((call-struct-identifier (str identifier "_args"))
                                    (reply-struct-identifier (str identifier "_result"))
-                                   (request-function-name (cons-request-symbol identifier))
-                                   (response-function-name (cons-response-symbol identifier)))
+                                   (request-function-name (str-sym identifier))
+                                   (response-function-name (response-str-sym identifier)))
                               `((eval-when (:compile-toplevel :load-toplevel :execute)
                                   (def-struct ,call-struct-identifier
                                     ,(mapcar #'parm-to-field-decl parameter-list))
                                   (def-struct ,reply-struct-identifier
                                     (,@(unless (eq return-type 'void) `(("success" nil :id 0 :type ,return-type)))
                                      ,@exceptions)))
+                                (shadow 'implementation-function-name (symbol-package ',implementation-function-name))
                                 (export ',request-function-name (symbol-package ',request-function-name))
                                 (export ',response-function-name (symbol-package ',response-function-name))
                                 (def-request-method ,request-function-name (,parameter-list ,return-type)
@@ -475,7 +513,7 @@
                                   (:identifier ,identifier)
                                   (:call-struct ,call-struct-identifier)
                                   (:reply-struct ,reply-struct-identifier)
-                                  (:implementation-function ,implementation-function)
+                                  (:implementation-function ,implementation-function-name)
                                   ,@(when exceptions `((:exceptions ,@exceptions)))
                                   ,@(when oneway `((:oneway t))))))))
                       methods)
@@ -491,7 +529,8 @@
                 :base-services (list ,@(mapcar #'str-sym (if (listp base-services) base-services (list base-services))))
                 :methods ',(mapcar #'(lambda (identifier name) `(,identifier . ,name))
                                    identifiers response-names)
-                ,@(when documentation `(:documentation ,(string-trim *whitespace* documentation)))
+                :documentation ,(format nil "~@[~a~%---~%~]~(~{~{~a~24t~a : ~a~}~^~%~}~)"
+                                        documentation (sort method-interfaces #'string-lessp :key #'first))
                 ,@initargs)))))
 
 

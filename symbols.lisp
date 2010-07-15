@@ -33,8 +33,8 @@
 
 (eval-when (:compile-toplevel :load-toplevel :execute)          ; for batch compilation
 
-  (defun request-package ()
-    (let ((package (concatenate 'string (package-name *package*) (string :-request))))
+  (defun implementation-package ()
+    (let ((package (concatenate 'string (package-name *package*) (string :-implementation))))
       (or (find-package package)
           (make-package package :use nil))))
   
@@ -122,13 +122,13 @@
   
   ;;; (assert (equal (list (str-sym "keyword:a") (str-sym "keyword:" "a") (str-sym "a" "sdf")) '(:a :a thrift-generated::asdf)))
   
-  (defun cons-request-symbol (&rest identifiers)
-    (let* ((*package* (request-package))
+  (defun implementation-str-sym (&rest identifiers)
+    (let* ((*package* (implementation-package))
            (sym (apply #'str-sym identifiers)))
       (export sym *package*)
       sym))
 
-  (defun cons-response-symbol (&rest identifiers)
+  (defun response-str-sym (&rest identifiers)
     (let* ((*package* (response-package))
            (sym (apply #'str-sym identifiers)))
       (export sym *package*)
