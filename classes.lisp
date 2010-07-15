@@ -360,6 +360,8 @@
     (apply #'make-condition class initargs)))
 
 (defgeneric struct-name (class)
+  (:method ((class class))
+    (class-name class))
   (:method ((class thrift-struct-class))
     (class-name class))
   (:method ((class thrift-exception-class))
