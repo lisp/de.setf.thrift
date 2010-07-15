@@ -238,13 +238,13 @@ Issues
 
   * _namespace_ : request proxy function, structure types and accessors, exception types,
     enum types, constants
-  * _namespace_`-implementation` : implementation function, use <namespace>, use cl
+  * _namespace_`-implementation` : implementation function, use _namespace_, use cl
     shadow all implementation function names.
   * _namespace_`-response` : response functions
 
 ### instantiation protocol :
  struct classes are standard classes and exception classes are
- whatever the implementation prescribes. decoders apply make-struct to an initrgs list.
+ whatever the implementation prescribes. decoders apply make-struct to an initargs list.
  particularly at the service end, there are advantages to resourcing structs and decoding
  with direct side-effects on slot-values
 
