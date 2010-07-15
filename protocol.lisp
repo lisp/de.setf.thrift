@@ -98,7 +98,8 @@
 (defgeneric stream-write-i32 (protocol value))
 (defgeneric stream-write-i64 (protocol value))
 (defgeneric stream-write-double (protocol value))
-(defgeneric stream-write-string (protocol value))
+#+digitool ;;digitools stream-write-string signature requires four arguments. leave it to be shadowed
+(defgeneric stream-write-string (protocol value &optional start end))
 (defgeneric stream-write-binary (protocol value))
 
 (defgeneric stream-write-message-begin (protocol identifier type seq))
@@ -401,6 +402,7 @@
                       (t
                        (unknown-field protocol id name field-type value)))))))))
 
+#+(or)                                  ; see below for the slot-value version
 (define-compiler-macro stream-read-struct (&whole form prot &optional type &environment env)
   "Iff the type is a constant, compile the decoder inline. If class is not defined, signal an error.
  The intended use is to compile IDL files, for which the code generator and the definition macros
@@ -421,6 +423,43 @@
                       ,@(loop for fd in field-definitions
                               nconc (list (field-definition-initarg fd) (field-definition-name fd)))
                       ,extra-initargs))))))))
+
+
+(define-compiler-macro stream-read-struct (&whole form prot &optional type instance &environment env)
+  "Iff the type is a constant, compile the decoder inline. If class is not defined, signal an error.
+ The intended use is to compile IDL files, for which the code generator and the definition macros
+ arrange that structure definitions preceed references."
+  
+  (expand-iff-constant-types (type) form
+    (with-gensyms (expected-class)
+      (with-optional-gensyms (prot) env
+        (with-gensyms (initargs)
+          (let* ((class (find-thrift-class type))
+                 (field-definitions (class-field-definitions class))
+                 (struct (gensym)))
+            (if (subtypep type 'condition)
+              `(let ((,initargs nil)
+                     (,expected-class (find-thrift-class ',type)))
+                 ,(generate-struct-decoder prot expected-class
+                                           (loop for fd in field-definitions
+                                                 collect `((getf ,initargs ',(field-definition-initarg fd)) nil
+                                                           :id ,(field-definition-identifier-number fd)
+                                                           :type ,(field-definition-type fd)))
+                                           initargs)
+                 (apply #'make-struct ',type ,initargs))
+              `(let* ((,initargs nil)
+                      (,expected-class (find-thrift-class ',type))
+                      (,struct ,(if instance instance `(allocate-instance ,expected-class))))
+                 ,(generate-struct-decoder prot expected-class
+                                           (loop for fd in field-definitions
+                                                 collect `((slot-value ,struct ',(field-definition-name fd)) nil
+                                                           :id ,(field-definition-identifier-number fd)
+                                                           :type ,(field-definition-type fd)))
+                                           initargs)
+                 (when ,initargs
+                   (apply #'reinitialize-instance ,struct ,initargs))
+                 ,struct))))))))
+
 
 
 
@@ -730,15 +769,16 @@
 
   (let ((class (find-thrift-class type)))
     (stream-write-struct-begin protocol (class-identifier class))
-    (dolist (sd (class-field-definitions class))
-      (let ((name (field-definition-name sd)))
-        ;; requirement constraints should be embodied in the slot initform
-        ;; a slot which does not require initialization is skipped if not bound
-        (when (slot-boundp value name)
+    (dolist (fd (class-field-definitions class))
+      (let ((name (field-definition-name fd))
+            (optional (field-definition-optional fd)))
+        ;; if a slot is optional, then skip unbound slots
+        ;; otherwise, require the value, possibly signalling the unbound situation
+        (unless (and optional (not (slot-boundp value name)))
           (stream-write-field protocol (slot-value value name)
-                              :identifier-number (field-definition-identifier-number sd)
-                              :identifier-name (field-definition-identifier sd)
-                              :type (field-definition-type sd)))))
+                              :identifier-number (field-definition-identifier-number fd)
+                              :identifier-name (field-definition-identifier fd)
+                              :type (field-definition-type fd)))))
     (stream-write-field-stop protocol)
     (stream-write-struct-end protocol)))
 
@@ -784,10 +824,16 @@
         (with-optional-gensyms (prot value) env
           `(progn (stream-write-struct-begin ,prot ,identifier)
                   ,@(loop for fd in field-definitions
-                          collect `(stream-write-field ,prot (,(field-definition-reader fd) ,value)
-                                                       :identifier-number ,(field-definition-identifier-number fd)
-                                                       :identifier-name ,(field-definition-identifier fd)
-                                                       :type ',(field-definition-type fd)))
+                          collect (if (field-definition-optional fd)
+                                    `(when (slot-boundp ,value ',(field-definition-name fd))
+                                       (stream-write-field ,prot (,(field-definition-reader fd) ,value)
+                                                           :identifier-number ,(field-definition-identifier-number fd)
+                                                           :identifier-name ,(field-definition-identifier fd)
+                                                           :type ',(field-definition-type fd)))
+                                    `(stream-write-field ,prot (,(field-definition-reader fd) ,value)
+                                                         :identifier-number ,(field-definition-identifier-number fd)
+                                                         :identifier-name ,(field-definition-identifier fd)
+                                                         :type ',(field-definition-type fd))))
                   (stream-write-field-stop ,prot)
                   (stream-write-struct-end ,prot)))))))
 
@@ -868,7 +914,7 @@
       `(let ((size (hash-table-count ,value)))
          ;; nb. no need to check size as the hash table size is constrained by array size limits.
          (stream-write-map-begin ,prot ',key-type ',value-type size)
-         (loop for element-value being each hash-value of value
+         (loop for element-value being each hash-value of ,value
                using (hash-key element-key)
                do (progn #+thrift-check-types (assert (typep element-value ',value-type))
                          #+thrift-check-types (assert (typep element-key ',key-type))
