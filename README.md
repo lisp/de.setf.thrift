@@ -98,14 +98,14 @@ The tutorial comprises serveral functions: `add`, `ping`, `zip`, and `calculate`
 Each translatd IDL corresponds to three packages. In this case, the packages
 
   * :tutorial
-  * :tutorial-request
+  * :tutorial-implementation
   * :tutorial-response
 
 The first package is for the service implementation.
 
     ;; define the base operations
     
-    (in-package :tutorial)
+    (in-package :tutorial-implementation)
     
     (defun add ( num1 num2)
       (format t "~&Asked to add ~A and ~A." num1 num2)
@@ -234,12 +234,11 @@ Issues
   three: the implementation, the request interface, and the response interface.
   The current pattern is:
 
-    <namespace> : request proxy function, structure types and accessors, exception types,
-                  enum types, constants
-    <namespace>-implementation : implementation function, use <namespace>, use cl
-                                 shadow all implementation function names,
-                                 cross-export all other <namespace> symbols
-    <namespace>-response : response functions
+    * <namespace> : request proxy function, structure types and accessors, exception types,
+      enum types, constants
+    * <namespace>-implementation : implementation function, use <namespace>, use cl
+      shadow all implementation function names.
+    * <namespace>-response : response functions
 
   * instantiation protocol : struct classes are standard classes and exception classes are
     whatever the implementation prescribes. decoders apply make-struct to an initrgs list.
