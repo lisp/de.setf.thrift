@@ -33,7 +33,11 @@
  These must be selectively shadowed as per application requirements in a using package.")
 
   (:import-from :common-lisp
-               :string)
+                :string)
+  ;; digitools stream-write-string signature requires four arguments. leave it to be shadowed
+  #+sbcl
+  (:import-from :sb-gray
+                :stream-write-string)
 
   (:export 
    :*binary-transport-element-type*
