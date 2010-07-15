@@ -289,11 +289,12 @@
 (defgeneric field-definition-name (field-definition)
   (:method ((fd cl:list))
     ;; for use in macros
-    (let ((identifier (first fd)))
-      (etypecase identifier
-        (string (str-sym identifier))
+    (let ((place (first fd)))
+      (etypecase place
+        (cons place)                    ; for (setf (slot-value ...
+        (string (str-sym place))
         ;; allow for the gensym in the interposed result field
-        (symbol identifier))))
+        (symbol place))))
 
   (:method ((sd c2mop:slot-definition))
     (c2mop:slot-definition-name sd)))
@@ -345,6 +346,10 @@
 
 (defgeneric make-struct (class &rest initargs)
   (declare (dynamic-extent initargs))
+
+  (:method ((class-name symbol) &rest initargs)
+    (declare (dynamic-extent initargs))
+    (apply #'make-struct (find-class class-name) initargs))
 
   (:method ((class thrift-struct-class) &rest initargs)
     (declare (dynamic-extent initargs))
