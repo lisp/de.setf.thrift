@@ -237,8 +237,8 @@ Issues
  The current pattern is:
 
   * _namespace_ : request proxy function, structure types and accessors, exception types,
-    enum types, constants
-  * _namespace_`-implementation` : implementation function, use _namespace_, use cl
+    enum types, constants; use `:thrift`
+  * _namespace_`-implementation` : implementation function, use `:thrift`, use _namespace_, but
     shadow all implementation function names.
   * _namespace_`-response` : response functions
 
