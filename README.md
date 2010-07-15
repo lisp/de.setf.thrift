@@ -217,9 +217,11 @@ Use a Client to Access the Service Remotely
 Status
 ======
 
-The initial library version serves as an interface to Cassandar[[6]] in order to provide access to
+The initial library version serves as an interface to Cassandra[[6]] in order to provide access to
 Datagraph's Cassandra-based RDF store[[7]]. The code evolved from an initial version which had been
 submitted to Thift in 2008[[8]].
+
+An demonstration of access through the Cassandra API is among the READMES[[9]].
 
 Issues
 ------
@@ -231,13 +233,6 @@ Issues
   * namespace - package equivalence : The IDL specifies a single namespace. The Lisp binding uses
   three: the implementation, the request interface, and the response interface.
   The current pattern is:
-
-    <namespace> : implementation function, exception types, enum types, constants,
-                   structure types and accessors
-    <namespace>-request : request proxy function
-    <namespace>-response : response functions
-
-  This may evolve to
 
     <namespace> : request proxy function, structure types and accessors, exception types,
                   enum types, constants
@@ -260,3 +255,4 @@ Issues
  [6]: http://wiki.apache.org/cassandra/FrontPage
  [7]: http://github.com/bendiken/rdf-cassandra
  [8]: http://markmail.org/thread/4tfa3zbweyg2qwne: thrift jira lisp issue
+ [9]: ./READMES/readme-cassandra.lisp
