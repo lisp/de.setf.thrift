@@ -122,16 +122,16 @@
   
   ;;; (assert (equal (list (str-sym "keyword:a") (str-sym "keyword:" "a") (str-sym "a" "sdf")) '(:a :a thrift-generated::asdf)))
   
-  (defun cons-request-symbol (identifier)
-    (let* ((package (request-package))
-          (sym (cons-symbol package identifier)))
-      (export sym package)
+  (defun cons-request-symbol (&rest identifiers)
+    (let* ((*package* (request-package))
+           (sym (apply #'str-sym identifiers)))
+      (export sym *package*)
       sym))
 
-  (defun cons-response-symbol (identifier)
-    (let* ((package (response-package))
-          (sym (cons-symbol package identifier)))
-      (export sym package)
+  (defun cons-response-symbol (&rest identifiers)
+    (let* ((*package* (response-package))
+           (sym (apply #'str-sym identifiers)))
+      (export sym *package*)
       sym))
   
   (defun strs-syms (strs &key (key #'identity))
