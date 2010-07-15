@@ -234,11 +234,11 @@ Issues
   three: the implementation, the request interface, and the response interface.
   The current pattern is:
 
-    * <namespace> : request proxy function, structure types and accessors, exception types,
+    * _namespace_ : request proxy function, structure types and accessors, exception types,
       enum types, constants
-    * <namespace>-implementation : implementation function, use <namespace>, use cl
+    * _namespace_`-implementation` : implementation function, use <namespace>, use cl
       shadow all implementation function names.
-    * <namespace>-response : response functions
+    * _namespace_`-response` : response functions
 
   * instantiation protocol : struct classes are standard classes and exception classes are
     whatever the implementation prescribes. decoders apply make-struct to an initrgs list.
