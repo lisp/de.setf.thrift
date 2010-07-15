@@ -103,7 +103,8 @@
       (#xff
        (if (zerop fraction)
          (if negative-p single-float-negative-infinity single-float-positive-infinity)
-         single-float-nan))
+         #-sbcl single-float-nan
+         #+sbcl (eval 'single-float-nan)))
       (#x00
        ;; (print (cl:list :to-float sign raw-exponent exponent fraction))
        (if (zerop fraction)
@@ -140,7 +141,8 @@
       (#x7ff
        (if (zerop fraction)
          (if negative-p double-float-negative-infinity double-float-positive-infinity)
-         double-float-nan))
+         #-sbcl double-float-nan
+         #+sbcl (eval 'double-float-nan)))
       (#x000
        ;; (print (cl:list :to-float sign raw-exponent exponent fraction))
        (if (zerop fraction)
@@ -167,7 +169,9 @@
          #xff800000)
         ((= float single-float-positive-infinity)
          #x7f800000)
-        ((eql float single-float-nan)
+        ;; allow for sbcl inability to compile code with nan constants 
+        (#-sbcl (eql float single-float-nan)
+         #+sbcl (sb-ext:float-nan-p float)
          ;; http://en.wikipedia.org/wiki/NaN#Encodings
          ;; http://java.sun.com/javase/6/docs/api/java/lang/Double.html#doubleToLongBits(double)
          #x7fc00000)
@@ -208,7 +212,9 @@
          #xfff0000000000000)
         ((= float double-float-positive-infinity)
          #x7ff0000000000000)
-        ((eql float double-float-nan)
+        ;; allow for sbcl inability to compile code with nan constants                                                                                
+        (#-sbcl (eql float double-float-nan)
+         #+sbcl (sb-ext:float-nan-p float)
          ;; http://en.wikipedia.org/wiki/NaN#Encodings
          ;; http://java.sun.com/javase/6/docs/api/java/lang/Double.html#doubleToLongBits(double)
          #x7ff8000000000000)        
