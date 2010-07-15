@@ -108,7 +108,8 @@
 
 
 (defmacro def-enum (identifier entries)
-  (let ((name (cons-symbol *package* identifier)))
+  (let ((name (cons-symbol *package* identifier))
+        (value-names (mapcar #'(lambda (entry) (str-sym identifier "." (car entry))) entries)))
     ;; define the type, leave the keys are string
     (let ((values (mapcar #'rest entries)))
       (assert (stringp identifier))
@@ -117,6 +118,8 @@
                     (get ',name 'thrift::enum-alist) ',entries)
               ,@(mapcar #'(lambda (entry) `(defconstant ,(str-sym identifier "." (car entry)) ,(rest entry)))
                         entries)
+              (eval-when (:load-toplevel :compile-toplevel :execute)
+                (export '(,name ,@value-names) (symbol-package ',name)))
               ',name))))
 
 
@@ -145,12 +148,18 @@
   (let ((metaclass (or (second (assoc :metaclass options)) 'thrift-struct-class))
         (identifier (or (second (assoc :identifier options)) identifier))
         (condition-class (second (assoc :condition-class options)))
-        (name (str-sym identifier))
+        (name (cons-request-symbol identifier))
+        (make-name (cons-request-symbol "make-" identifier))
+        (slot-names nil)
         (documentation nil))
     (when (stringp fields)
       (shiftf documentation fields (pop options)))
+    (setf slot-names (loop for (identifier) in fields collect (str-sym identifier)))
     ;; make the definitions available to compile codecs
     `(eval-when (:compile-toplevel :load-toplevel :execute)
+       (defun ,make-name (&rest -initargs- &key ,@slot-names)
+         (declare (ignore ,@slot-names))
+         (apply #'make-instance ',name -initargs-))
        (defclass ,name (thrift-object)
          ,(loop for field in fields
                 collect (destructuring-bind (slot-identifier default &key type id documentation (optional nil o-s))
@@ -158,11 +167,11 @@
                           (assert (typep id 'fixnum))
                           `(,(str-sym slot-identifier)
                             :initarg ,(cons-symbol :keyword slot-identifier)
-                            :accessor ,(str-sym identifier "-" slot-identifier)
+                            :accessor ,(cons-request-symbol identifier "-" slot-identifier)
                             ,@(when type `(:type ,type))
                             :identifier-number ,id
                             :identifier-name ,slot-identifier
-                            ,@(when default `(:initform ,default))
+                            ,@(when (or default (eq type 'bool)) `(:initform ,default))         ; are any bool fields optional?
                             ,@(when o-s `(:optional ,optional))
                             ,@(when documentation `(:documentation ,(string-trim *whitespace* documentation))))))
          (:metaclass ,metaclass)
@@ -170,7 +179,10 @@
          ,@(when condition-class `((:condition-class ,condition-class)))
          ,@(when documentation `((:documentation ,(string-trim *whitespace* documentation)))))
        ,@(unless (eq metaclass 'thrift-exception-class)
-           `((export ',name (symbol-package ',name))
+           `((export '(,name ,make-name
+                       ,@(loop for (slot-identifier) in fields
+                               collect (cons-request-symbol identifier "-" slot-identifier)))
+                     (symbol-package ',name))
              (setf (find-thrift-class ',name) (find-class ',name)))))))
 
 
@@ -294,6 +306,7 @@
                                   :lambda-list '(protocol ,@parameter-names)
                                   :generic-function-class 'thrift-request-function
                                   :identifier ,identifier)
+         #+ccl (ccl::record-arglist ',name '(protocol ,@parameter-names))
          (defmethod ,name ((,gprot protocol) ,@(mapcar #'list parameter-names type-names))
            ,@(when documentation `(,documentation))
            (stream-write-message-begin ,gprot ,identifier 'call
@@ -370,6 +383,7 @@
                                             ;; defer the evaluation
                                             (symbol `(quote ,implementation))
                                             ((cons (eql lambda)) `(function ,implementation))))
+                #+ccl (ccl::record-arglist ',name '(service sequence-number protocol))
                 (defmethod ,name ((,service t) (,seq t) (,gprot protocol))
                   ,@(when documentation `(,documentation))
                   (let (,@(mapcar #'list parameter-names defaults)
