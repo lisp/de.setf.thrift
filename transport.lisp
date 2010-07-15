@@ -164,7 +164,8 @@
 (when (typep #'close 'generic-function)
   (defmethod close ((stream transport) &rest args)
     (when (next-method-p) (call-next-method))
-    (apply #'transport-close stream args)))
+    (apply #'transport-close stream args)
+    t))
 
 
 #-sbcl
@@ -194,9 +195,7 @@
 #+sbcl
 (defmethod stream-read-byte ((transport binary-transport))
   (let ((unsigned-byte (read-byte (transport-stream transport))))
-    (if unsigned-byte
-      (signed-byte-8 unsigned-byte)
-      (error 'end-of-file :stream (transport-stream transport)))))
+    (signed-byte-8 unsigned-byte)))
 
 
 #-(or mcl sbcl)
@@ -210,7 +209,9 @@
 
 #+sbcl
 (defmethod stream-read-sequence ((transport binary-transport) (sequence vector) &optional (start 0) (end nil))
-  (read-sequence sequence (transport-stream transport) :start start :end end))
+  (unless (= (read-sequence sequence (transport-stream transport) :start start :end end)
+             (or end (length sequence)))
+    (error 'end-of-file :stream (transport-stream transport))))
 
 ;;;
 ;;; output
