@@ -221,7 +221,7 @@ The initial library version serves as an interface to Cassandra[[6]] in order to
 Datagraph's Cassandra-based RDF store[[7]]. The code evolved from an initial version which had been
 submitted to Thift in 2008[[8]].
 
-An demonstration of access through the Cassandra API is among the READMES[[9]].
+A demonstration of access through the Cassandra API is among the READMES[[9]].
 
 Issues
 ------
