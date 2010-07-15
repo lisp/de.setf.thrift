@@ -474,7 +474,7 @@
          (methods (remove :method options :test-not #'eq :key #'first))
          (documentation (second (assoc :documentation options)))
          (identifiers (mapcar #'second methods))
-         (response-names (mapcar #'cons-response-symbol identifiers))
+         (response-names (mapcar #'response-str-sym identifiers))
          (initargs (loop for (key . rest) in options
                          unless (member key '(:service-class :method :documentation))
                          collect key
