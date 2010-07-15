@@ -215,11 +215,41 @@ Use a Client to Access the Service Remotely
     
 
 Status
-==========
+======
 
 The initial library version serves as an interface to Cassandar[[6]] in order to provide access to
 Datagraph's Cassandra-based RDF store[[7]]. The code evolved from an initial version which had been
 submitted to Thift in 2008[[8]].
+
+Issues
+------
+
+  * optional fields : Where the IDL declares a field options, the def-struct form includes no
+ initform for the slot and the encoding operator skips an unbound slot. This leave some ambiguity
+ with bool fields.
+
+  * namespace - package equivalence : The IDL specifies a single namespace. The Lisp binding uses
+  three: the implementation, the request interface, and the response interface.
+  The current pattern is:
+
+    <namespace> : implementation function, exception types, enum types, constants,
+                   structure types and accessors
+    <namespace>-request : request proxy function
+    <namespace>-response : response functions
+
+  This may evolve to
+
+    <namespace> : request proxy function, structure types and accessors, exception types,
+                  enum types, constants
+    <namespace>-implementation : implementation function, use <namespace>, use cl
+                                 shadow all implementation function names,
+                                 cross-export all other <namespace> symbols
+    <namespace>-response : response functions
+
+  * instantiation protocol : struct classes are standard classes and exception classes are
+    whatever the implementation prescribes. decoders apply make-struct to an initrgs list.
+    particularly at the service end, there are advantages to resourcing structs and decoding
+    with direct side-effects on slot-values
 
 
  [1]: www.common-lisp.net/asdf
