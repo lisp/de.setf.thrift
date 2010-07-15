@@ -214,7 +214,9 @@
               8))
 
 
-(defmethod stream-write-string ((protocol binary-protocol) string)
+(defmethod stream-write-string ((protocol binary-protocol) string &optional (start 0) end)
+  (assert (and (zerop start) (or (null end) (= end (length string)))) ()
+          "Substring writes are not supported.")
   (let ((bytes (funcall (transport-string-encoder protocol) string)))
     (stream-write-i32 protocol (length bytes))
     (stream-write-sequence (protocol-output-transport protocol) bytes)
