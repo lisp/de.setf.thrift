@@ -158,3 +158,75 @@
   (:method ((type symbol)) type)
 
   (:method ((type cons)) (first type)))
+
+;;;
+;;; primitive constructors
+
+(defun thrift:map (&rest tups)
+  "Represent map objects as hash tables.
+ NB. in order to effect equality when the keys themselves are maps, this and the transport operations
+ would need to maintain a global registry."
+  (declare (dynamic-extent tups))
+  (let ((tbl (make-hash-table :test 'equal)))
+     (loop for (key . value) in tups
+           do (setf (gethash key tbl) value))
+     tbl))
+
+(defun thrift:list (&rest values)
+  values)
+
+(defun thrift:set (&rest values)
+  values)
+
+
+;;;
+;;; primitive accessors
+;;; --- in prepration to support association lists as maps
+
+(defgeneric map-get (map key &optional default)
+  (:documentation "Retrieve the map entry for a given key.
+ Permit a-list and hash table as representation.")
+
+  (:method ((map list) key &optional default)
+    (let ((pair (assoc key map :test #'equalp)))
+      (if pair
+        (rest pair)
+        default)))
+
+  (:method ((map hash-table) key &optional default)
+    (gethash key map default)))
+
+
+(defgeneric map-set (map key value)
+  (:method ((map list) key value)
+    (let ((pair (assoc key map :test #'equalp)))
+      (if pair
+        (setf (rest pair) value)
+        (setf map (acons key value map)))
+      map))
+
+  (:method ((map hash-table) key value)
+    (setf (gethash key map) value)
+    map))
+
+(define-setf-method map-get (map key &environment env)
+  (multiple-value-bind (temps vals stores
+                        store-form access-form)
+                       (get-setf-method map env)
+    (let ((store (gensym))
+          (stemp (first stores))
+          (ktemp (gensym)))
+      (values (cons ktemp temps) (cons key vals) (list store)
+              `(let ((,stemp (map-set ,access-form ,ktemp ,store)))
+                 ,store-form
+                 ,store)
+              `(map-get ,access-form ,ktemp)))))
+
+
+(defgeneric map-map (function map)
+  (:method (function (map list))
+    (loop for (key . value) in map
+          do (funcall function key value))
+    nil)
+  (:method (function (map hash-table))
+    (maphash function map)))

@@ -34,10 +34,16 @@
 
   (:import-from :common-lisp
                 :string)
+  #+ccl
+  (:import-from :ccl
+                :stream-direction)
   ;; digitools stream-write-string signature requires four arguments. leave it to be shadowed
   #+sbcl
   (:import-from :sb-gray
                 :stream-write-string)
+  #+sbcl
+  (:import-from :common-lisp
+                :stream-direction)
 
   (:export 
    :*binary-transport-element-type*
@@ -88,6 +94,7 @@
    :invalid-struct-type
    :list
    :map
+   :map-get
    :protocol
    :protocol-error
    :protocol-field-id-mode
@@ -103,6 +110,7 @@
    :service-package
    :set
    :shared-service
+   :stream-direction
    :stream-read-binary
    :stream-read-bool
    :stream-read-double
