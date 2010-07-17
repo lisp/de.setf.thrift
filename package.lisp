@@ -137,6 +137,7 @@
    :stream-read-struct-begin
    :stream-read-struct-end
    :stream-read-type
+   :stream-read-type-value
    :stream-write-binary
    :stream-write-bool
    :stream-write-double
@@ -153,6 +154,7 @@
    :stream-write-string
    :stream-write-struct
    :stream-write-type
+   :stream-write-type-value
    :string
    :struct
    :struct-name
