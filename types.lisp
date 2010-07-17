@@ -102,8 +102,18 @@
     (str-sym identifier)
     '(or thrift-object thrift-error)))
 
-(deftype field-size () `(integer 0 ,array-dimension-limit))
 
+(defparameter *container-limit* nil
+  "When non-null, the integer value limits the permissible container size.")
+
+(deftype field-size () `(satisfies field-size-p))
+
+(defun field-size-p (x)
+  "True for integers if within any asserted size limit."
+  (and (integerp x)
+       (>= x 0)
+       (or (null *container-limit*)
+           (< x *container-limit*))))
 
 ;;;
 ;;; type-of equivalent which is specific to thrift types
