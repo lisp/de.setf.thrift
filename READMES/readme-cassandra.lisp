@@ -9,9 +9,12 @@
 ;;; (load "/development/source/library/de/setf/thrift/idl/cassandra-types")
 
 ;;; remote, for example
-(defparameter *c-location* #u"thrift://ec2-174-129-66-148.compute-1.amazonaws.com:9160")
-;;; local
-(defparameter *c-location* #u"thrift://127.0.0.1:9160")
+(defparameter *c-location*
+  ;; remote
+  ;; #u"thrift://ec2-174-129-66-148.compute-1.amazonaws.com:9160"
+  ;; local
+  #u"thrift://127.0.0.1:9160"
+  )
 
 (defparameter *c* (client *c-location*))
 
@@ -33,14 +36,18 @@
                                         using (hash-value value)
                                         collect (cons key value)))))
 
+
 (defun describe-cassandra (location &optional (stream *standard-output*))
+  "Print the first-order store metadata for a cassandra LOCATION."
+
   (thrift:with-client (cassandra location)
     (let* ((keyspace-names (cassandra:describe-keyspaces cassandra))
            (cluster (cassandra:describe-cluster-name cassandra))
            (version (cassandra:describe-version cassandra))
            (keyspace-descriptions (loop for space in keyspace-names
                                         collect (cons space
-                                                      (loop for key being each hash-key of (cassandra:describe-keyspace cassandra space)
+                                                      (loop for key being each hash-key
+                                                            of (cassandra:describe-keyspace cassandra space)
                                                             using (hash-value value)
                                                             collect (cons key
                                                                           (loop for key being each hash-key of value
