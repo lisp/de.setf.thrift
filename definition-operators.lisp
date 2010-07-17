@@ -73,26 +73,6 @@
 ;;;
 ;;; [1]: $THRIFT/compiler/src/generate/t_cl_generator.cc
 
-
-;;
-;;; primitive constructors
-
-(defun thrift:map (&rest tups)
-  "Represent map objects as hash tables.
- NB. in order to effect equality when the keys themselves are maps, this and the transport operations
- would need to maintain a global registry."
-  (declare (dynamic-extent tups))
-  (let ((tbl (make-hash-table :test 'equal)))
-     (loop for (key . value) in tups
-           do (setf (gethash key tbl) value))
-     tbl))
-
-(defun thrift:list (&rest values)
-  values)
-
-(defun thrift:set (&rest values)
-  values)
-
           
 (defun parm-to-field-decl (parameter-spec)
   "Convert a specialize parameter declaration into the form for a structure field declaration
