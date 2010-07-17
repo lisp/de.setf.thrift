@@ -5,7 +5,7 @@
 
 (thrift:def-package :cassandra)
 
-(in-package :cassandra)
+(cl:in-package :cassandra)
 
 (thrift:def-enum "ConsistencyLevel"
   (("ZERO" . 0)
@@ -223,6 +223,7 @@ full ring.
    ("strategy_class" nil :type string :id 2)
    ("replication_factor" nil :type i32 :id 3)
    ("cf_defs" nil :type (thrift:list (struct "cfdef")) :id 5)))
+
 
 (thrift:def-service "Cassandra" nil
   (:method "login" ((("auth_request" (struct "authenticationrequest") 1)) (enum "AccessLevel"))
