@@ -350,8 +350,8 @@
         (values value identifier idnr)))))
 
 ;;; a compiler macro would find no use, since the macro expansion for reading a struct already
-;;; incorporates dispatches on field id to call read-value-as, and stream-read-field itself
-;;; never knows the type at compile time.
+;;; incorporates dispatches on field id to an inline-able call stream-read-value-as, while stream-read-field
+;;; never itself knows the type at compile time.
 
 
 
@@ -745,6 +745,14 @@
      `(stream-read-enum ,protocol ',(str-sym (second type))))))
   
 
+(defgeneric stream-read-typed-value (protocol)
+  (:documentation "Given a PROTOCOL instance, decode the value's type and then the value itself.
+ This is used to decode adhoc data for exchange as a binary value.")
+
+  (:method ((protocol protocol))
+    (let ((type-name (stream-read-type protocol)))
+      (stream-read-value-as protocol type-name))))
+
 
 
 ;;; output implementation 
@@ -1123,6 +1131,15 @@
     (enum-type
      `(stream-write-i16 ,protocol ,value))))
 
+
+(defgeneric stream-write-typed-value (protocol value)
+  (:documentation "Given a PROTOCOL instance and a VALUE, encode the value's type and then the value itself.
+ This is used to encode adhoc data for exchange as a binary value.")
+
+  (:method ((protocol protocol) (value t))
+    (let ((type-name (thrift:type-of value)))
+      (stream-write-type protocol type-name)
+      (stream-write-value-as protocol value type-name))))
 
 ;;;
 ;;; protocol exception operators
