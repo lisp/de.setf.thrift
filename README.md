@@ -248,6 +248,14 @@ Issues
  particularly at the service end, there are advantages to resourcing structs and decoding
  with direct side-effects on slot-values
 
+### maps:
+
+ Maps are now represented as hash tables. As data through the call/reply interface is all statically
+ typed, it is not necessary for the objects to themselves indicate the coding form. Association lists
+ would be sufficient. As the key type is arbitrary, property lists offer no additional convenience:
+ as `getf` operates with `eq` a new access interface would be necessary and they would not be
+ available for function application.
+
 
  [1]: www.common-lisp.net/asdf
  [2]: http://github.com/lisp/com.b9.puri.ppcre
