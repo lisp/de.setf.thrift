@@ -95,7 +95,8 @@
    (field2 :type i16 :initarg :field2 :accessor test-struct-field2
            :identifier-number 2 :identifier "fieldTwo"))
   (:metaclass thrift-struct-class)
-  (:identifier "TestStruct"))
+  (:identifier "TestStruct")
+  (:documentation "a simple srtuct class for tests"))
 
 (defclass test-large-struct (thrift-object)
   ((field1 :type i16 :initarg :field1 :accessor test-struct-field1
@@ -119,7 +120,9 @@
    (field10 :type i16 :initarg :field10 :accessor test-struct-field10
            :identifier-number 10 :identifier "fieldTen" :optional t))
   (:metaclass thrift-struct-class)
-  (:identifier "TestLargeStruct"))
+  (:identifier "TestLargeStruct")
+  (:documentation "A struct class for use in timing tests and to test
+ optional field codecs - thus no initforms."))
 
 
 
