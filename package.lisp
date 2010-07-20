@@ -41,9 +41,6 @@
   #+sbcl
   (:import-from :sb-gray
                 :stream-write-string)
-  #+sbcl
-  (:import-from :common-lisp
-                :stream-direction)
 
   (:export 
    :*binary-transport-element-type*
