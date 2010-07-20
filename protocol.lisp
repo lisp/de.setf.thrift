@@ -975,8 +975,8 @@
                             (stream-write-value-as ,prot element-value ',value-type))))
            (list
             (loop for (element-key . element-value) in ,value
-                  do (progn (stream-write-value-as protocol element-key ',key-type)
-                            (stream-write-value-as protocol element-value ',value-type)))))
+                  do (progn (stream-write-value-as ,prot element-key ',key-type)
+                            (stream-write-value-as ,prot element-value ',value-type)))))
          (stream-write-map-end ,prot)))))
 
 
