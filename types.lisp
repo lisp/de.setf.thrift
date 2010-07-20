@@ -219,10 +219,10 @@
     (setf (gethash key map) value)
     map))
 
-(define-setf-method map-get (map key &environment env)
+(define-setf-expander map-get (map key &environment env)
   (multiple-value-bind (temps vals stores
                         store-form access-form)
-                       (get-setf-method map env)
+                       (get-setf-expansion map env)
     (let ((store (gensym))
           (stemp (first stores))
           (ktemp (gensym)))
