@@ -25,20 +25,44 @@
 
 
 
-(defgeneric client (location &key protocol direction element-type)
-  (:method ((location puri:uri) &key (protocol 'binary-protocol) (direction :io)
-            (element-type 'unsigned-byte))
-    (make-instance protocol
-      :transport (socket-transport location :element-type element-type :direction direction)
-      :direction direction))
+(defgeneric client (location &key protocol direction element-type &allow-other-keys)
+  (:method ((location puri:uri) &rest initargs &key (direction :io) (element-type 'unsigned-byte et-s) &allow-other-keys)
+    (when et-s
+      (setf initargs (copy-list initargs))
+      (remf initargs :element-type))
+    (apply #'client (socket-transport location :element-type element-type :direction direction)
+           :direction direction
+           initargs))
 
-  (:method ((location pathname) &key (protocol 'binary-protocol) (direction :io)
-            (element-type 'unsigned-byte))
-    (let ((transport (make-instance 'file-transport
-                        :element-type element-type
-                       :direction direction
-                       :pathname location)))
-      (make-instance protocol :transport transport :direction direction))))
+  (:method ((location pathname) &rest initargs &key (direction :io) (element-type 'unsigned-byte et-s) &allow-other-keys)
+    (when et-s
+      (setf initargs (copy-list initargs))
+      (remf initargs :element-type))
+    (apply #'client (make-instance 'file-transport
+                      :pathname location :element-type element-type :direction direction)
+            :direction direction
+            initargs))
+
+  (:method ((instance protocol) &rest initargs
+            &key (protocol (class-of instance) p-s) (direction (stream-direction instance)) &allow-other-keys)
+    "Given a protocol INSTANCE, and a PROTOCOL class, make a new protocol instance which reuses
+     the given instance's transports."
+    (when p-s
+      (setf initargs (copy-list initargs))
+      (remf initargs :protocol))
+    (make-instance protocol
+      :input-transport (thrift:protocol-input-transport protocol)
+      :output-transport (thrift:protocol-output-transport protocol)
+      :direction direction
+      initargs))
+
+  (:method ((instance binary-transport) &rest initargs
+            &key (protocol 'binary-protocol p-s) (direction (stream-direction instance)) &allow-other-keys)
+    (when p-s
+      (setf initargs (copy-list initargs))
+      (remf initargs :protocol))
+    (apply #'make-instance protocol :transport instance :direction direction
+           initargs)))
 
 
 (defmacro with-client ((protocol &rest args) &body body)
