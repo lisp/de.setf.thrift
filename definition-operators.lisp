@@ -94,7 +94,7 @@
        (unless (find-package ,name)
          (defpackage ,name
            (:use :thrift ,@use)
-           (:import-from :common-lisp nil)
+           (:import-from :common-lisp nil t)
            (:documentation ,(format nil "This is the application interface package for ~a.
  It uses the generic THRIFT package for access to the library interface." name))))
        
@@ -164,7 +164,7 @@
     (when (stringp fields)
       (shiftf documentation fields (pop options)))
     (setf slot-names (loop for (identifier) in fields collect (str-sym identifier)))
-    (setf accessor-names (loop for (identifier) in fields collect (str-sym identifier "-" identifier)))
+    (setf accessor-names (loop for (slot-identifier) in fields collect (str-sym identifier "-" slot-identifier)))
     ;; make the definitions available to compile codecs
     `(eval-when (:compile-toplevel :load-toplevel :execute)
        ,@(unless condition-class
