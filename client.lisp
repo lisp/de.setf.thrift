@@ -50,7 +50,7 @@
     (when p-s
       (setf initargs (copy-list initargs))
       (remf initargs :protocol))
-    (make-instance protocol
+    (apply #'make-instance protocol
       :input-transport (thrift:protocol-input-transport protocol)
       :output-transport (thrift:protocol-output-transport protocol)
       :direction direction
