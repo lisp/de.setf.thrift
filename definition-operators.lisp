@@ -120,7 +120,9 @@
     (let ((values (mapcar #'rest entries)))
       (assert (stringp identifier))
       (assert (every #'integerp values))
-      `(progn (setf (get ',name 'thrift::enum-members) ',values
+      ;; some compilers require the compile-time type for slot definitions
+      `(eval-when (:compile-toplevel :load-toplevel :execute)
+         (setf (get ',name 'thrift::enum-members) ',values
                     (get ',name 'thrift::enum-alist) ',entries)
               ,@(mapcar #'(lambda (entry) `(defconstant ,(str-sym identifier "." (car entry)) ,(rest entry)))
                         entries)
