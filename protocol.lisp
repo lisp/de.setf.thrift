@@ -961,12 +961,13 @@
          ;; nb. no need to check size as the hash table size is constrained by array size limits.
          (stream-write-map-begin ,prot ',key-type ',value-type size)
          (etypecase ,value
-           (loop for element-value being each hash-value of ,value
-                 using (hash-key element-key)
-                 do (progn #+thrift-check-types (assert (typep element-value ',value-type))
-                           #+thrift-check-types (assert (typep element-key ',key-type))
-                           (stream-write-value-as ,prot element-key ',key-type)
-                           (stream-write-value-as ,prot element-value ',value-type)))
+           (hash-table
+            (loop for element-value being each hash-value of ,value
+                  using (hash-key element-key)
+                  do (progn #+thrift-check-types (assert (typep element-value ',value-type))
+                            #+thrift-check-types (assert (typep element-key ',key-type))
+                            (stream-write-value-as ,prot element-key ',key-type)
+                            (stream-write-value-as ,prot element-value ',value-type))))
            (list
             (loop for (element-key . element-value) in ,value
                   do (progn (stream-write-value-as protocol element-key ',key-type)
