@@ -940,29 +940,24 @@
                                  using (hash-key key)
                                  do (return (values (thrift:type-of key) (thrift:type-of value))))
         (unless key-type (setf key-type k-type))
-        (unless value-type (setf value-type v-type)))
-      (stream-write-map-begin protocol key-type value-type size)
-      (loop for element-value being each hash-value of value
-               using (hash-key element-key)
-               do (progn (stream-write-value-as protocol element-key key-type)
-                         (stream-write-value-as protocol element-value value-type)))
-      (stream-write-map-end protocol))))
+        (unless value-type (setf value-type v-type))))
+    (stream-write-map-begin protocol key-type value-type size)
+    (loop for element-value being each hash-value of value
+          using (hash-key element-key)
+          do (progn (stream-write-value-as protocol element-key key-type)
+                    (stream-write-value-as protocol element-value value-type)))
+    (stream-write-map-end protocol)))
 
 (defmethod stream-write-map ((protocol protocol) (value list) &optional key-type value-type)
   (let ((size (length value)))
     ;; nb. no need to check size as the hash table size is constrained by array size limits.
-    (unless (and key-type value-type)
-      (multiple-value-bind (k-type v-type)
-                           (loop for value being each hash-value of value
-                                 using (hash-key key)
-                                 do (return (values (thrift:type-of key) (thrift:type-of value))))
-        (unless key-type (setf key-type k-type))
-        (unless value-type (setf value-type v-type)))
-      (stream-write-map-begin protocol key-type value-type size)
-      (loop for (element-key . element-value) in value
-            do (progn (stream-write-value-as protocol element-key key-type)
-                      (stream-write-value-as protocol element-value value-type)))
-      (stream-write-map-end protocol))))
+    (unless key-type (setf key-type (thrift:type-of (caar value))))
+    (unless value-type (setf value-type (thrift:type-of (cdar value))))
+    (stream-write-map-begin protocol key-type value-type size)
+    (loop for (element-key . element-value) in value
+          do (progn (stream-write-value-as protocol element-key key-type)
+                    (stream-write-value-as protocol element-value value-type)))
+    (stream-write-map-end protocol)))
 
 (define-compiler-macro stream-write-map (&whole form prot value &optional key-type value-type &environment env)
   (expand-iff-constant-types (key-type value-type) form
