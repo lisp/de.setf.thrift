@@ -186,7 +186,9 @@
                             ,@(when type `(:type ,type))
                             :identifier-number ,id
                             :identifier-name ,slot-identifier
-                            ,@(when (or default (eq type 'bool)) `(:initform ,default))         ; are any bool fields optional?
+                            ,@(if (or default (eq type 'bool))
+                                `(:initform ,default)         ; are any bool fields optional?
+                                (unless o-s `(:initform (error ,(format nil "~a is required." slot-identifier)))))
                             ,@(when o-s `(:optional ,optional))
                             ,@(when documentation `(:documentation ,(string-trim *whitespace* documentation))))))
          (:metaclass ,metaclass)

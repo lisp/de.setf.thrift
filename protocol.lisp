@@ -807,10 +807,12 @@
         ;; if a slot is optional, then skip unbound slots
         ;; otherwise, require the value, possibly signalling the unbound situation
         (unless (and optional (not (slot-boundp value name)))
-          (stream-write-field protocol (slot-value value name)
-                              :identifier-number (field-definition-identifier-number fd)
-                              :identifier-name (field-definition-identifier fd)
-                              :type (field-definition-type fd)))))
+          (let ((slot-value (slot-value value name)))
+            (when (or slot-value (eq (field-definition-type fd) 'bool))
+              (stream-write-field protocol slot-value
+                                  :identifier-number (field-definition-identifier-number fd)
+                                  :identifier-name (field-definition-identifier fd)
+                                  :type (field-definition-type fd)))))))
     (stream-write-field-stop protocol)
     (stream-write-struct-end protocol)))
 
@@ -858,10 +860,12 @@
                   ,@(loop for fd in field-definitions
                           collect (if (field-definition-optional fd)
                                     `(when (slot-boundp ,value ',(field-definition-name fd))
-                                       (stream-write-field ,prot (,(field-definition-reader fd) ,value)
-                                                           :identifier-number ,(field-definition-identifier-number fd)
-                                                           :identifier-name ,(field-definition-identifier fd)
-                                                           :type ',(field-definition-type fd)))
+                                       (let ((slot-value (,(field-definition-reader fd) ,value)))
+                                         (when (or ,(eq (field-definition-type fd) 'bool) slot-value)
+                                           (stream-write-field ,prot slot-value
+                                                               :identifier-number ,(field-definition-identifier-number fd)
+                                                               :identifier-name ,(field-definition-identifier fd)
+                                                               :type ',(field-definition-type fd)))))
                                     `(stream-write-field ,prot (,(field-definition-reader fd) ,value)
                                                          :identifier-number ,(field-definition-identifier-number fd)
                                                          :identifier-name ,(field-definition-identifier fd)
