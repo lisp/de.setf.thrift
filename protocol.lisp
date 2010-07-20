@@ -931,8 +931,8 @@
   (:method ((map hash-table)) (hash-table-count map))
   (:method ((map list)) (length map)))
 
-(defmethod stream-write-map ((protocol protocol) value &optional key-type value-type)
-  (let ((size (map-size value)))
+(defmethod stream-write-map ((protocol protocol) (value hash-table) &optional key-type value-type)
+  (let ((size (hash-table-count value)))
     ;; nb. no need to check size as the hash table size is constrained by array size limits.
     (unless (and key-type value-type)
       (multiple-value-bind (k-type v-type)
@@ -942,16 +942,26 @@
         (unless key-type (setf key-type k-type))
         (unless value-type (setf value-type v-type)))
       (stream-write-map-begin protocol key-type value-type size)
-      (etypecase value
-        (hash-table
-         (loop for element-value being each hash-value of value
+      (loop for element-value being each hash-value of value
                using (hash-key element-key)
                do (progn (stream-write-value-as protocol element-key key-type)
-                         (stream-write-value-as protocol element-value value-type))))
-        (list
-         (loop for (element-key . element-value) in value
-               do (progn (stream-write-value-as protocol element-key key-type)
-                         (stream-write-value-as protocol element-value value-type)))))
+                         (stream-write-value-as protocol element-value value-type)))
+      (stream-write-map-end protocol))))
+
+(defmethod stream-write-map ((protocol protocol) (value list) &optional key-type value-type)
+  (let ((size (length value)))
+    ;; nb. no need to check size as the hash table size is constrained by array size limits.
+    (unless (and key-type value-type)
+      (multiple-value-bind (k-type v-type)
+                           (loop for value being each hash-value of value
+                                 using (hash-key key)
+                                 do (return (values (thrift:type-of key) (thrift:type-of value))))
+        (unless key-type (setf key-type k-type))
+        (unless value-type (setf value-type v-type)))
+      (stream-write-map-begin protocol key-type value-type size)
+      (loop for (element-key . element-value) in value
+            do (progn (stream-write-value-as protocol element-key key-type)
+                      (stream-write-value-as protocol element-value value-type)))
       (stream-write-map-end protocol))))
 
 (define-compiler-macro stream-write-map (&whole form prot value &optional key-type value-type &environment env)
