@@ -927,8 +927,12 @@
 
 (defmethod stream-write-map-end ((protocol protocol)))
 
+(defgeneric map-size (map)
+  (:method ((map hash-table)) (hash-table-count map))
+  (:method ((map list)) (length map)))
+
 (defmethod stream-write-map ((protocol protocol) value &optional key-type value-type)
-  (let ((size (hash-table-count value)))
+  (let ((size (map-size value)))
     ;; nb. no need to check size as the hash table size is constrained by array size limits.
     (unless (and key-type value-type)
       (multiple-value-bind (k-type v-type)
@@ -938,24 +942,35 @@
         (unless key-type (setf key-type k-type))
         (unless value-type (setf value-type v-type)))
       (stream-write-map-begin protocol key-type value-type size)
-      (loop for element-value being each hash-value of value
-            using (hash-key element-key)
-            do (progn (stream-write-value-as protocol element-key key-type)
-                      (stream-write-value-as protocol element-value value-type)))
+      (etypecase value
+        (hash-table
+         (loop for element-value being each hash-value of value
+               using (hash-key element-key)
+               do (progn (stream-write-value-as protocol element-key key-type)
+                         (stream-write-value-as protocol element-value value-type))))
+        (list
+         (loop for (element-key . element-value) in value
+               do (progn (stream-write-value-as protocol element-key key-type)
+                         (stream-write-value-as protocol element-value value-type)))))
       (stream-write-map-end protocol))))
 
 (define-compiler-macro stream-write-map (&whole form prot value &optional key-type value-type &environment env)
   (expand-iff-constant-types (key-type value-type) form
     (with-optional-gensyms (prot value) env
-      `(let ((size (hash-table-count ,value)))
+      `(let ((size (map-size ,value)))
          ;; nb. no need to check size as the hash table size is constrained by array size limits.
          (stream-write-map-begin ,prot ',key-type ',value-type size)
-         (loop for element-value being each hash-value of ,value
-               using (hash-key element-key)
-               do (progn #+thrift-check-types (assert (typep element-value ',value-type))
-                         #+thrift-check-types (assert (typep element-key ',key-type))
-                         (stream-write-value-as ,prot element-key ',key-type)
-                         (stream-write-value-as ,prot element-value ',value-type)))
+         (etypecase ,value
+           (loop for element-value being each hash-value of ,value
+                 using (hash-key element-key)
+                 do (progn #+thrift-check-types (assert (typep element-value ',value-type))
+                           #+thrift-check-types (assert (typep element-key ',key-type))
+                           (stream-write-value-as ,prot element-key ',key-type)
+                           (stream-write-value-as ,prot element-value ',value-type)))
+           (list
+            (loop for (element-key . element-value) in ,value
+                  do (progn (stream-write-value-as protocol element-key ',key-type)
+                            (stream-write-value-as protocol element-value ',value-type)))))
          (stream-write-map-end ,prot)))))
 
 
@@ -1091,6 +1106,8 @@
   (:method ((protocol protocol) (value thrift-object) (type cons))
     (stream-write-struct protocol value (str-sym (second type))))
   (:method ((protocol protocol) (value hash-table) (type (eql 'thrift:map)))
+    (stream-write-map protocol value))
+  (:method ((protocol protocol) (value list) (type (eql 'thrift:map)))
     (stream-write-map protocol value))
   (:method ((protocol protocol) (value hash-table) (type cons))
     (stream-write-map protocol value (str-sym (second type)) (str-sym (third type))))
