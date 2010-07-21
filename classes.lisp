@@ -349,7 +349,7 @@
 
   (:method ((class-name symbol) &rest initargs)
     (declare (dynamic-extent initargs))
-    (apply #'make-struct (find-class class-name) initargs))
+    (apply #'make-struct (find-thrift-class class-name) initargs))
 
   (:method ((class thrift-struct-class) &rest initargs)
     (declare (dynamic-extent initargs))
