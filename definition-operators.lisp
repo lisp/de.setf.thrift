@@ -197,7 +197,7 @@
          ,@(when documentation `((:documentation ,(string-trim *whitespace* documentation)))))
        ,@(unless (eq metaclass 'thrift-exception-class)
            `((export '(,name ,make-name
-                       )
+                       ,@accessor-names)
                      (symbol-package ',name))
              (setf (find-thrift-class ',name) (find-class ',name)))))))
 
