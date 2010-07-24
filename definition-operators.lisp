@@ -106,7 +106,7 @@
  the ~a package for access to the service interface." name name))))
        
        (unless (find-package ,response-name)
-         (defpackage ,implementation-name
+         (defpackage ,response-name
            (:use)
            (:documentation ,(format nil "This is the response package for ~a. It is isolated." name)))))))
 
