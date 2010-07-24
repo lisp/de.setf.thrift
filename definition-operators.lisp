@@ -171,7 +171,13 @@
        ,@(unless condition-class
            `((defun ,make-name (&rest -initargs- &key ,@slot-names)
                (declare (ignore ,@slot-names))
-               (apply #'make-instance ',name -initargs-))))
+               (apply #'make-instance ',name -initargs-))
+             (defmethod print-object ((object ,name) (stream t))
+               (print-unreadable-object (object stream :type t :identity y)
+                 ,@(loop for slot-name in slot-names
+                         collect `(when (slot-boundp object ',slot-name)
+                                    (format stream " :~a ~s"
+                                            ',slot-name (slot-valu object ',slot-name))))))))
        (defclass ,name (thrift-object)
          ,(loop for field in fields
                 for slot-name in slot-names
