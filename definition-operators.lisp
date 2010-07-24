@@ -102,7 +102,7 @@
          (defpackage ,implementation-name
            (:use :thrift)
            (:documentation ,(format nil "This is the implementation package for ~a.
- It uses the generic THRIFT package for access to the library interface." name name))))
+ It uses the generic THRIFT package for access to the library interface." name))))
        
        (unless (find-package ,response-name)
          (defpackage ,response-name
@@ -177,7 +177,7 @@
                  ,@(loop for slot-name in slot-names
                          collect `(when (slot-boundp object ',slot-name)
                                     (format stream " :~a ~s"
-                                            ',slot-name (slot-valu object ',slot-name))))))))
+                                            ',slot-name (slot-value object ',slot-name))))))))
        (defclass ,name (thrift-object)
          ,(loop for field in fields
                 for slot-name in slot-names
