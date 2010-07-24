@@ -31,8 +31,6 @@
 (cassandra:describe-version *c*)
 ;; => "2.1.0"
 
-(close *c*)
-
 (loop for space in (cassandra:describe-keyspaces *c*)
       collect (loop for key being each hash-key of (cassandra:describe-keyspace *c* space)
                     using (hash-value value)
@@ -41,6 +39,8 @@
                                         using (hash-value value)
                                         collect (cons key value)))))
 
+
+(close *c*)
 
 (defun describe-cassandra (location &optional (stream *standard-output*))
   "Print the first-order store metadata for a cassandra LOCATION."
@@ -64,42 +64,3 @@
       (format stream "~&keyspaces~{~{~%~%space: ~a~@{~%  ~{~a :~@{~20t~:w~^~%~}~}~}~}~}" keyspace-descriptions))))
 
 ;;; (describe-cassandra *c-location*)
-
-;;; work with Keyspace2
-
-(defparameter *ks* (keyspace *c-location* :name "Keyspace1"))
-(defparameter *standard2* (make-instance 'column-family :keyspace *ks* :name "Standard2"))
-
-
-;;; simple, column-based access
-
-(insert *standard2* :key "user1" :column "one" :value "2")
-(insert *standard2* :key "user2" :column "one" :value "1")
-
-(get *standard2* :key "user1" :column "one")
-
-
-;;; in terms of attribute-value
-;;; individual
-(attribute-value *standard2* "user1" "one")
-
-(princ (nth-value 1 (ignore-errors (attribute-value *standard2* "user" "one"))))
-
-(dotimes (x 10)
-  (setf (attribute-value *standard2* "user1" (format nil "~:r" x)) (princ-to-string x)))
-
-(loop for x from 0 below 10
-      for column-name = (format nil "~:r" x)
-      collect (cons column-name (attribute-value *standard2* "user1" column-name)))
-
-;;; and 'sliced'
-(attribute-values *standard2* "user1")
-
-(attribute-values *standard2* "user1" :start "ninth" :finish "second")
-
-(attribute-values *standard2* "user1" :start "ninth" :count 2)
-
-(setf (attribute-values *standard2* "user3" :column-names '("some" "little" "details"))
-      '("come" "to" "light"))
-
-(attribute-values *standard2* "user3")
