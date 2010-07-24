@@ -100,10 +100,9 @@
        
        (unless (find-package ,implementation-name)
          (defpackage ,implementation-name
-           (:use :thrift ,name)
+           (:use :thrift)
            (:documentation ,(format nil "This is the implementation package for ~a.
- It uses the generic THRIFT package for access to the library interface, and
- the ~a package for access to the service interface." name name))))
+ It uses the generic THRIFT package for access to the library interface." name name))))
        
        (unless (find-package ,response-name)
          (defpackage ,response-name
