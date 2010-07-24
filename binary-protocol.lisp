@@ -203,6 +203,7 @@
               (declare (dynamic-extent buffer)
                        (type (simple-array (unsigned-byte 8) (8)) buffer)
                        (type (unsigned-byte 64) int-value))
+              ;; if the conversion is correct, this is redundant, sbcl eliminate it
               (assert  (typep int-value '(unsigned-byte 64)) ()
                        'type-error :datum int-value :expected-type '(unsigned-byte 64))
               ;; (format *trace-output* "~%(out 0x~16,'0x)" int-value)
