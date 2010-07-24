@@ -856,7 +856,9 @@
                   (stream-write-struct-end ,prot)))
         ;; otherwise expand with instance field refences
         (with-optional-gensyms (prot value) env
-          `(progn (stream-write-struct-begin ,prot ,identifier)
+          `(progn (assert (typep ,value ',type) ()
+                          "Attempt to serialize ~s as ~s." ,value ',type)
+                  (stream-write-struct-begin ,prot ,identifier)
                   ,@(loop for fd in field-definitions
                           collect (if (field-definition-optional fd)
                                     `(when (slot-boundp ,value ',(field-definition-name fd))
