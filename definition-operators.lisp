@@ -173,7 +173,7 @@
                (declare (ignore ,@slot-names))
                (apply #'make-instance ',name -initargs-))
              (defmethod print-object ((object ,name) (stream t))
-               (print-unreadable-object (object stream :type t :identity y)
+               (print-unreadable-object (object stream :type t :identity t)
                  ,@(loop for slot-name in slot-names
                          collect `(when (slot-boundp object ',slot-name)
                                     (format stream " :~a ~s"
