@@ -168,16 +168,6 @@
     (setf accessor-names (loop for (slot-identifier) in fields collect (str-sym identifier "-" slot-identifier)))
     ;; make the definitions available to compile codecs
     `(eval-when (:compile-toplevel :load-toplevel :execute)
-       ,@(unless condition-class
-           `((defun ,make-name (&rest -initargs- &key ,@slot-names)
-               (declare (ignore ,@slot-names))
-               (apply #'make-instance ',name -initargs-))
-             (defmethod print-object ((object ,name) (stream t))
-               (print-unreadable-object (object stream :type t :identity t)
-                 ,@(loop for slot-name in slot-names
-                         collect `(when (slot-boundp object ',slot-name)
-                                    (format stream " :~a ~s"
-                                            ',slot-name (slot-value object ',slot-name))))))))
        (defclass ,name (thrift-object)
          ,(loop for field in fields
                 for slot-name in slot-names
@@ -200,6 +190,16 @@
          (:identifier ,identifier)
          ,@(when condition-class `((:condition-class ,condition-class)))
          ,@(when documentation `((:documentation ,(string-trim *whitespace* documentation)))))
+       ,@(unless condition-class
+           `((defun ,make-name (&rest -initargs- &key ,@slot-names)
+               (declare (ignore ,@slot-names))
+               (apply #'make-instance ',name -initargs-))
+             (defmethod print-object ((object ,name) (stream t))
+               (print-unreadable-object (object stream :type t :identity t)
+                 ,@(loop for slot-name in slot-names
+                         collect `(when (slot-boundp object ',slot-name)
+                                    (format stream " :~a ~s"
+                                            ',slot-name (slot-value object ',slot-name))))))))
        ,@(unless (eq metaclass 'thrift-exception-class)
            `((export '(,name ,make-name
                        ,@accessor-names)
