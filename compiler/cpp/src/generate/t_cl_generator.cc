@@ -322,8 +322,14 @@ void t_cl_generator::generate_cl_struct_internal(std::ofstream& out, t_struct* t
     }
     out << "(" << prefix((*m_iter)->get_name()) << " " <<
         ( (NULL != value) ? render_const_value(type, value) : "nil" ) <<
-        " :type " << typespec((*m_iter)->get_type()) <<
         " :id " << (*m_iter)->get_key();
+    if ( type->is_base_type() && "string" == typespec(type) )
+      if ( ((t_base_type*)type)->is_binary() )
+        out << " :type binary";
+      else
+        out << " :type string";
+    else
+      out << " :type " << typespec(type);
     if ( (*m_iter)->get_req() == t_field::T_OPTIONAL ) {
       out << " :optional t";
     }
