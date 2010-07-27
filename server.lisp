@@ -49,7 +49,7 @@
    (methods
     :reader service-methods
     :type hash-table
-    :documentation "A thrift:map (an equal hash table), which registers the methods defined directly for the
+    :documentation "An equal hash table which registers the methods defined directly for the
      service. The keys are strings, since, at the point when the message start is read, the package for
      just the immediate service is known. This would make the symbols from a single included base service
      visible, but not those of anything which it includes. Only one a method has been identified does its
@@ -91,7 +91,10 @@
   (etypecase methods
     (hash-table (setf (slot-value instance 'methods) methods))
     (list (setf (slot-value instance 'methods)
-                (apply #'thrift:map methods)))))
+                (let ((map (make-hash-table :test 'equal)))
+                  (loop for (name . implementation) in methods
+                        do (setf (gethash name map) implementation))
+                  map)))))
 
 (defmethod print-object ((object service) stream)
   (print-unreadable-object (object stream :identity t :type t)

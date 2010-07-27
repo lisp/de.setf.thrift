@@ -17,6 +17,7 @@
 
 (defvar *test-server-process* nil)
 
+(defvar *test-break-on-errors* t)
 
 (defun find-test (name) (gethash name *tests*))
 
@@ -47,7 +48,7 @@
                       (format *trace-output* "~%test (~a) signaled:~%~:w~%~a" name form condition)
                       (push name errored))
                      (t
-                      (format *trace-output* "~%test (~a) failed:~%~:w" name form)
+                      (format *trace-output* "~&~%test (~a) failed:~%~:w" name form)
                       (push name failed))))))
       (if test-names
         (dolist (pattern test-names)
@@ -72,7 +73,12 @@
   `(progn (setf (find-test ',name)
                 #'(lambda (&aux (name ',name) (form ',form))
                     (multiple-value-bind (result error)
-                                         (ignore-errors ,form)
+                                         (block :do-test
+                                           (handler-bind ((error (lambda (c)
+                                                                   (when *test-break-on-errors*
+                                                                     (break "~%~a signaled ~a." ',name c))
+                                                                   (return-from :do-test (values nil c)))))
+                                             ,form))
                       (cond (error
                              (values nil error name form))
                             (result

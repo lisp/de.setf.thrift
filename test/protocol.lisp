@@ -84,11 +84,12 @@
         (stream (make-test-protocol)))
     (stream-write-struct stream struct)
     (rewind stream)
-    (let ((result (stream-read-struct stream)))
+    (let* ((type 'test-struct)
+           (result (stream-read-struct stream type)))
       (and (typep result 'test-struct)
            (equal (test-struct-field1 result) "one")
            (equal (test-struct-field2 result) 2)))))
-
+;;; (run-tests "protocol.stream-read/write-struct")
 
 (test protocol.stream-read/write-struct.inline
   (let ((struct (make-instance 'test-struct :field1 "one" :field2 2))
@@ -99,6 +100,7 @@
       (and (typep result 'test-struct)
            (equal (test-struct-field1 result) "one")
            (equal (test-struct-field2 result) 2)))))
+;;; (run-tests "protocol.stream-read/write-struct.inline")
 
 
 (test protocol.stream-read/write-struct.optional
@@ -132,7 +134,9 @@
   (let ((stream (make-test-protocol)))
     (every #'(lambda (entry)
                (apply #'test-read-write-equivalence stream entry))
-           `((stream-read-map stream-write-map ,(thrift:map '(1 . "a") '(2 . "b")))))))
+           `((stream-read-map stream-write-map ,(thrift:map 1 "a" 2 "b"))))))
+;;; (run-tests "protocol.stream-read/write-map")
+
 
 
 (test protocol.stream-read/write-list
@@ -147,7 +151,7 @@
                                ;; and the java and cpp versions just send it as a string
                                ;; (#(1 2 3) #(4 5 6))
                                (1.0d0 -1.0d0)
-                               (,(thrift:map '(1 . "a") '(2 . "b"))))))))
+                               (,(thrift:map 1 "a" 2 "b")))))))
 
 
 (test protocol.stream-read/write-set

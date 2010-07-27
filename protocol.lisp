@@ -361,7 +361,7 @@
      (let ((name (stream-read-string protocol)))
        (protocol-find-thrift-class protocol name)))
     (:none
-     (find-class 'list))))
+     nil)))
 
 (defmethod stream-read-struct-end ((protocol protocol)))
 
@@ -375,19 +375,20 @@
   ;; Were it slot classes only, a better protocol would be (setf slot-value-using-class), but that does not
   ;; apply to exceptions. Given both cases, this is coded to stay symmetric.
   (let* ((class (stream-read-struct-begin protocol))
-         (type (struct-name class)))
-    (if (null expected-type)
-      (setf expected-type type)
-      (unless (or (eq type 'list) (eq type expected-type))
-        (invalid-struct-type protocol expected-type type)))
-    (cond ((eq type 'list)              ; anonymous struct
-           ;;;!!! untested
+         (type (when class (struct-name class))))
+    (when expected-type
+      (if type
+        (unless (eq type expected-type)
+          (invalid-struct-type protocol expected-type type))
+        (setf type expected-type
+              class (find-thrift-class expected-type))))
+    (cond ((null type)              ; anonymous struct
            (let ((struct ()))
              (loop (multiple-value-bind (value name id field-type)
                                         (stream-read-field protocol)
                      (cond ((eq field-type 'stop)
                             (stream-read-struct-end protocol)
-                            (return struct))
+                            (return (nreverse struct)))
                            (t
                             (setf struct (acons (or name id) value struct))))))))
           ((subtypep type 'condition)
@@ -543,7 +544,7 @@
 (defmethod stream-read-map-end ((protocol protocol)))
 
 (defmethod stream-read-map((protocol protocol) &optional key-type value-type)
-  (let ((map (thrift:map)))
+  (let ((map ()))
     (multiple-value-bind (read-key-type read-value-type size) (stream-read-map-begin protocol)
       (unless (or (null key-type) (equal read-key-type (type-category key-type)))
         (invalid-element-type protocol 'thrift:map key-type read-key-type))
@@ -553,16 +554,17 @@
         (invalid-field-size protocol 0 "" 'field-size size))
       (dotimes (i size)
         ;; no type check - presume the respective reader is correct.
-        (setf (gethash (stream-read-value-as protocol read-key-type) map)
-              (stream-read-value-as protocol read-value-type)))
+        (setf map (acons (stream-read-value-as protocol read-key-type)
+                         (stream-read-value-as protocol read-value-type)
+                         map)))
       (stream-read-map-end protocol)
-      map)))
+      (nreverse map))))
 
 (define-compiler-macro stream-read-map (&whole form prot &optional key-type value-type &environment env)
   (expand-iff-constant-types (key-type value-type) form
     (with-gensyms (map)
       (with-optional-gensyms (prot) env
-        `(let ((,map (thrift:map)))
+        `(let ((,map ()))
            (multiple-value-bind (key-type value-type size) (stream-read-map-begin ,prot)
              (unless (equal key-type ',(type-category key-type))
                (invalid-element-type ,prot 'thrift:map ',key-type key-type))
@@ -572,10 +574,11 @@
                (invalid-field-size ,prot 0 "" 'field-size size))
              (dotimes (i size)
                ;; no type check - presume the respective reader is correct.
-               (setf (gethash (stream-read-value-as ,prot ',key-type) ,map)
-                     (stream-read-value-as ,prot ',value-type)))
+               (setf ,map (acons (stream-read-value-as ,prot ',key-type)
+                                 (stream-read-value-as ,prot ',value-type)
+                                 ,map)))
              (stream-read-map-end ,prot)
-             ,map))))))
+             (nreverse ,map)))))))
 
 
 
@@ -820,12 +823,23 @@
          (fields (class-field-definitions class)))
     (stream-write-struct-begin protocol (class-identifier class))
     (loop for (id . field-value) in value
-          do (let ((fd (or (find id fields :key #'field-definition-identifier-number)
-                           (error 'unknown-field protocol :number id))))
-               (stream-write-field protocol field-value
-                                   :identifier-number id
-                                   :identifier-name (field-definition-identifier fd)
-                                   :type (field-definition-type fd))))
+          do (etypecase id
+               (fixnum
+                (let ((fd (or (find id fields :key #'field-definition-identifier-number)
+                              (error 'unknown-field-error :protocol protocol :number id :name nil
+                                     :structure-type type :datum field-value))))
+                  (stream-write-field protocol field-value
+                                      :identifier-number id
+                                      :identifier-name (field-definition-identifier fd)
+                                      :type (field-definition-type fd))))
+               (string
+                (let ((fd (or (find id fields :key #'field-definition-identifier)
+                              (error 'unknown-field-error :protocol protocol :number nil :name id
+                                     :structure-type type :datum field-value))))
+                  (stream-write-field protocol field-value
+                                      :identifier-number (field-definition-identifier-number fd)
+                                      :identifier-name id
+                                      :type (field-definition-type fd))))))
     (stream-write-field-stop protocol)
     (stream-write-struct-end protocol)))
 
@@ -855,23 +869,30 @@
                   (stream-write-struct-end ,prot)))
         ;; otherwise expand with instance field refences
         (with-optional-gensyms (prot value) env
-          `(progn (assert (typep ,value ',type) ()
-                          "Attempt to serialize ~s as ~s." ,value ',type)
-                  (stream-write-struct-begin ,prot ,identifier)
-                  ,@(loop for fd in field-definitions
-                          collect (if (field-definition-optional fd)
-                                    `(when (slot-boundp ,value ',(field-definition-name fd))
-                                       (let ((slot-value (,(field-definition-reader fd) ,value)))
-                                         (stream-write-field ,prot slot-value
-                                                             :identifier-number ,(field-definition-identifier-number fd)
-                                                             :identifier-name ,(field-definition-identifier fd)
-                                                             :type ',(field-definition-type fd))))
-                                    `(stream-write-field ,prot (,(field-definition-reader fd) ,value)
+          `(progn
+             (typecase ,value
+             (,type
+              (stream-write-struct-begin ,prot ,identifier)
+              ,@(loop for fd in field-definitions
+                      collect (if (field-definition-optional fd)
+                                `(when (slot-boundp ,value ',(field-definition-name fd))
+                                   (let ((slot-value (,(field-definition-reader fd) ,value)))
+                                     (stream-write-field ,prot slot-value
                                                          :identifier-number ,(field-definition-identifier-number fd)
                                                          :identifier-name ,(field-definition-identifier fd)
                                                          :type ',(field-definition-type fd))))
-                  (stream-write-field-stop ,prot)
-                  (stream-write-struct-end ,prot)))))))
+                                `(stream-write-field ,prot (,(field-definition-reader fd) ,value)
+                                                     :identifier-number ,(field-definition-identifier-number fd)
+                                                     :identifier-name ,(field-definition-identifier fd)
+                                                     :type ',(field-definition-type fd))))
+              (stream-write-field-stop ,prot)
+              (stream-write-struct-end ,prot))
+             (list                      ;  allow s-exp encoded structs
+              (let ((type ',type))
+                (stream-write-struct ,prot ,value type)))
+             (t
+              (assert (typep ,value ',type) ()
+                      "Attempt to serialize ~s as ~s." ,value ',type)))))))))
 
 
 
@@ -927,30 +948,9 @@
 
 (defmethod stream-write-map-end ((protocol protocol)))
 
-(defgeneric map-size (map)
-  (:method ((map hash-table)) (hash-table-count map))
-  (:method ((map list)) (length map)))
-
-(defmethod stream-write-map ((protocol protocol) (value hash-table) &optional key-type value-type)
-  (let ((size (hash-table-count value)))
-    ;; nb. no need to check size as the hash table size is constrained by array size limits.
-    (unless (and key-type value-type)
-      (multiple-value-bind (k-type v-type)
-                           (loop for value being each hash-value of value
-                                 using (hash-key key)
-                                 do (return (values (thrift:type-of key) (thrift:type-of value))))
-        (unless key-type (setf key-type k-type))
-        (unless value-type (setf value-type v-type))))
-    (stream-write-map-begin protocol key-type value-type size)
-    (loop for element-value being each hash-value of value
-          using (hash-key element-key)
-          do (progn (stream-write-value-as protocol element-key key-type)
-                    (stream-write-value-as protocol element-value value-type)))
-    (stream-write-map-end protocol)))
-
 (defmethod stream-write-map ((protocol protocol) (value list) &optional key-type value-type)
-  (let ((size (length value)))
-    ;; nb. no need to check size as the hash table size is constrained by array size limits.
+  (let ((size (map-size value)))
+    ;; nb. no need to check size as the map size is constrained by array size limits.
     (unless key-type (setf key-type (thrift:type-of (caar value))))
     (unless value-type (setf value-type (thrift:type-of (cdar value))))
     (stream-write-map-begin protocol key-type value-type size)
@@ -963,20 +963,11 @@
   (expand-iff-constant-types (key-type value-type) form
     (with-optional-gensyms (prot value) env
       `(let ((size (map-size ,value)))
-         ;; nb. no need to check size as the hash table size is constrained by array size limits.
+         ;; nb. no need to check size as the map size is constrained by array size limits.
          (stream-write-map-begin ,prot ',key-type ',value-type size)
-         (etypecase ,value
-           (hash-table
-            (loop for element-value being each hash-value of ,value
-                  using (hash-key element-key)
-                  do (progn #+thrift-check-types (assert (typep element-value ',value-type))
-                            #+thrift-check-types (assert (typep element-key ',key-type))
-                            (stream-write-value-as ,prot element-key ',key-type)
-                            (stream-write-value-as ,prot element-value ',value-type))))
-           (list
-            (loop for (element-key . element-value) in ,value
-                  do (progn (stream-write-value-as ,prot element-key ',key-type)
-                            (stream-write-value-as ,prot element-value ',value-type)))))
+         (loop for (element-key . element-value) in ,value
+               do (progn (stream-write-value-as ,prot element-key ',key-type)
+                         (stream-write-value-as ,prot element-value ',value-type)))
          (stream-write-map-end ,prot)))))
 
 
@@ -1066,10 +1057,10 @@
   
   (:method ((protocol protocol) (value thrift-object))
     (stream-write-struct protocol value))
-  (:method ((protocol protocol) (value hash-table))
-    (stream-write-map protocol value))
   (:method ((protocol protocol) (value list))
-    (stream-write-list protocol value)))
+    (if (consp (first value))
+      (stream-write-map protocol value)
+      (stream-write-list protocol value))))
 
 
 (defgeneric stream-write-value-as (protocol value type)
@@ -1102,6 +1093,8 @@
 
   (:method ((protocol protocol) (value string) (type (eql 'string)))
     (stream-write-string protocol value))
+  (:method ((protocol protocol) (value symbol) (type (eql 'string)))
+    (stream-write-string protocol (symbol-name value)))
   (:method ((protocol protocol) (value vector) (type (eql 'binary)))
     (stream-write-binary protocol value))
 
@@ -1111,21 +1104,19 @@
     (stream-write-struct protocol value type))
   (:method ((protocol protocol) (value thrift-object) (type cons))
     (stream-write-struct protocol value (str-sym (second type))))
-  (:method ((protocol protocol) (value hash-table) (type (eql 'thrift:map)))
-    (stream-write-map protocol value))
+
   (:method ((protocol protocol) (value list) (type (eql 'thrift:map)))
     (stream-write-map protocol value))
-  (:method ((protocol protocol) (value hash-table) (type cons))
-    (stream-write-map protocol value (str-sym (second type)) (str-sym (third type))))
-
   (:method ((protocol protocol) (value list) (type (eql 'thrift:list)))
     (stream-write-list protocol value))
-  (:method ((protocol protocol) (value list) (type cons))
-    (stream-write-list protocol value (str-sym (second type))))
   (:method ((protocol protocol) (value list) (type (eql 'thrift:set)))
     (stream-write-set protocol value))
   (:method ((protocol protocol) (value list) (type cons))
-    (stream-write-set protocol value (str-sym (second type)))))
+    (destructuring-bind (type t1 &optional t2) type
+      (ecase type
+        (thrift:list (stream-write-list protocol value (str-sym t1)))
+        (thrift:set (stream-write-set protocol value (str-sym t1)))
+        (thrift:map (stream-write-map protocol value (str-sym t1) (str-sym t2)))))))
 
 
 (define-compiler-macro stream-write-value-as (&whole form protocol value type)
@@ -1143,12 +1134,12 @@
     ((eql void)
      nil)
     (base-type
-     `(,(cons-symbol :org.apache.thrift.implementation
-                     :stream-write- type) ,protocol ,value))
+     `(,(cons-symbol :org.apache.thrift.implementation :stream-write- type)
+       ,protocol ,value))
     ((member thrift:set thrift:list thrift:map)
      (warn "Compiling generic container encoder: ~s." type)
-     `(,(cons-symbol :org.apache.thrift.implementation
-                     :stream-write- type) ,protocol ,value))
+     `(,(cons-symbol :org.apache.thrift.implementation :stream-write- type)
+       ,protocol ,value))
     (container-type
      (destructuring-bind (type &rest element-types) type
        `(,(cons-symbol :org.apache.thrift.implementation :stream-write- type)

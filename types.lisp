@@ -43,21 +43,21 @@
 
 (deftype thrift:list (&optional element-type)
   "The thrift:list container type is implemented as a cl:list. The element type
- serves for declaration, but not discrimination."
+ serves for declaration, but not discrimination. An empty list should conform."
   (declare (ignore element-type))
  'list)
 
 (deftype thrift:set (&optional element-type)
   "The thrift:set container type is implemented as a cl:list. The element type
- serves for declaration, but not discrimination."
+ serves for declaration, but not discrimination. an empty set should conform."
   (declare (ignore element-type))
   'list)
 
 (deftype thrift:map (&optional key-type value-type)
-  "The thrift:map container type is implemented as a cl:hash-table The key and value types
- serve for declaration, but not discrimination."
+  "The thrift:map container type is implemented as a association list. The key and value types
+ serve for declaration, but not discrimination. An empty map should conform."
   (declare (ignore key-type value-type))
-  'hash-table)
+  'list)
 
 
 (deftype base-type () '(member bool thrift:byte i08 i16 i32 i64 double string binary))
@@ -139,10 +139,10 @@
     'string)
   (:method ((value vector))
     'binary)
-  (:method ((value hash-table))
-    'thrift:map)
   (:method ((value list))
-    'thrift:list))
+    (if (consp (first value))
+      'thrift:map
+      'thrift:list)))
 
 (defgeneric type-name-class (type-name)
   (:documentation "Return the lisp type equivalent for the given thrift type.
@@ -159,7 +159,7 @@
       (enum 'integer)
       (struct (str-sym (second type-name)))
       ((thrift:list thrift:set) 'list)
-      (thrift:map 'hash-table))))
+      (thrift:map 'list))))
 
 
 (defgeneric type-category (type)
@@ -172,15 +172,15 @@
 ;;;
 ;;; primitive constructors
 
-(defun thrift:map (&rest tups)
-  "Represent map objects as hash tables.
+(defun thrift:map (&rest pairs)
+  "Represent map objects as association lists.
  NB. in order to effect equality when the keys themselves are maps, this and the transport operations
  would need to maintain a global registry."
-  (declare (dynamic-extent tups))
-  (let ((tbl (make-hash-table :test 'equal)))
-     (loop for (key . value) in tups
-           do (setf (gethash key tbl) value))
-     tbl))
+  (if (consp (first pairs))
+    pairs
+    (loop for (key value) on pairs by #'cddr
+          ;; nb. does not test for completeness
+          collect (cons key value))))
 
 (defun thrift:list (&rest values)
   values)
@@ -193,30 +193,19 @@
 ;;; primitive accessors
 ;;; --- in prepration to support association lists as maps
 
-(defgeneric map-get (map key &optional default)
-  (:documentation "Retrieve the map entry for a given key.
- Permit a-list and hash table as representation.")
+(defun map-get (map key &optional default)
+  "Retrieve the map entry for a given key."
 
-  (:method ((map list) key &optional default)
-    (let ((pair (assoc key map :test #'equalp)))
-      (if pair
-        (rest pair)
-        default)))
+  (let ((pair (assoc key map :test #'equalp)))
+    (if pair
+      (rest pair)
+      default)))
 
-  (:method ((map hash-table) key &optional default)
-    (gethash key map default)))
-
-
-(defgeneric map-set (map key value)
-  (:method ((map list) key value)
-    (let ((pair (assoc key map :test #'equalp)))
-      (if pair
-        (setf (rest pair) value)
-        (setf map (acons key value map)))
-      map))
-
-  (:method ((map hash-table) key value)
-    (setf (gethash key map) value)
+(defun map-set (map key value)
+  (let ((pair (assoc key map :test #'equalp)))
+    (if pair
+      (setf (rest pair) value)
+      (setf map (acons key value map)))
     map))
 
 (define-setf-expander map-get (map key &environment env)
@@ -233,10 +222,12 @@
               `(map-get ,access-form ,ktemp)))))
 
 
-(defgeneric map-map (function map)
-  (:method (function (map list))
-    (loop for (key . value) in map
-          do (funcall function key value))
-    nil)
-  (:method (function (map hash-table))
-    (maphash function map)))
+(defun map-map (function map)
+  (loop for (key . value) in map
+        do (funcall function key value))
+  nil)
+
+
+(defun map-size (map)
+  (length map))
+

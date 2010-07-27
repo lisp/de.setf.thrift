@@ -68,7 +68,7 @@
     (string . string)
     (utf7   . string)
     (struct . standard-object)
-    (thrift:map . hash-table)
+    (thrift:map . cl:list)
     (thrift:set . cl:list)
     (thrift:list . cl:list)
     (utf8 . vector)
