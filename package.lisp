@@ -47,6 +47,7 @@
    :application-error
    :binary-protocol
    :binary-transport
+   :binary
    :bool
    :byte
    :call

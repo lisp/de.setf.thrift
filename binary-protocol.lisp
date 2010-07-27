@@ -225,9 +225,15 @@
     (+ 4 (length bytes))))
 
 
-(defmethod stream-write-binary ((protocol binary-protocol) bytes)
+(defmethod stream-write-binary ((protocol binary-protocol) (bytes vector))
   (let ((unsigned-bytes (make-array (length bytes) :element-type '(unsigned-byte 8))))
     (stream-write-i32 protocol (length bytes))
     (map-into unsigned-bytes #'unsigned-byte-8 bytes)
     (stream-write-sequence (protocol-output-transport protocol) unsigned-bytes)
+    (+ 4 (length bytes))))
+
+(defmethod stream-write-binary ((protocol binary-protocol) (string string))
+  (let ((bytes (funcall (transport-string-encoder protocol) string)))
+    (stream-write-i32 protocol (length bytes))
+    (stream-write-sequence (protocol-output-transport protocol) bytes)
     (+ 4 (length bytes))))

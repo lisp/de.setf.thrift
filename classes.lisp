@@ -128,6 +128,9 @@
 (defmethod c2mop:validate-superclass ((c2 thrift-class) (c1 standard-class))
   t)
 
+(defmethod thrift:type-of ((value thrift-object))
+  'struct)
+
 
 (defmethod make-instance ((class thrift-exception-class) &rest initargs)
   (declare (dynamic-extent initargs))

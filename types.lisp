@@ -38,7 +38,8 @@
 ;; double is standard
 ;; string is standard
 (deftype double () 'double-float)
-(deftype binary () '(array i08 (*)))
+;;; this is not what the spec says (it claims i08), but that makes no sense
+(deftype binary () '(array (unsigned-byte 8) (*)))
 
 
 (deftype thrift:list (&optional element-type)
@@ -98,9 +99,10 @@
 
 (deftype struct (&optional identifier)
   "The exception class hierarchy is disjount for that of strucs as data."
-  (if identifier
-    (str-sym identifier)
-    '(or thrift-object thrift-error)))
+  (etypecase identifier
+    (string (str-sym identifier))
+    (null '(or thrift-object thrift-error))
+    (symbol identifier)))
 
 
 (defparameter *container-limit* nil
@@ -120,7 +122,7 @@
 
 (defgeneric thrift:type-of (object)
   (:documentation "Implements an equivalent to cl:type-of, but return the most specific thrift
- type instead of the cl type. This is used to determine the encoding for for dynamically generated
+ type instead of the cl type. This is used to determine the encoding for dynamically generated
  messages.")
 
   (:method ((value null))
@@ -143,6 +145,7 @@
     (if (consp (first value))
       'thrift:map
       'thrift:list)))
+
 
 (defgeneric type-name-class (type-name)
   (:documentation "Return the lisp type equivalent for the given thrift type.

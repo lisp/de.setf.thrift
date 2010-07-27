@@ -1095,6 +1095,10 @@
     (stream-write-string protocol value))
   (:method ((protocol protocol) (value symbol) (type (eql 'string)))
     (stream-write-string protocol (symbol-name value)))
+  (:method ((protocol protocol) (value string) (type (eql 'binary)))
+    (stream-write-binary protocol value))
+  (:method ((protocol protocol) (value symbol) (type (eql 'binary)))
+    (stream-write-binary protocol (symbol-name value)))
   (:method ((protocol protocol) (value vector) (type (eql 'binary)))
     (stream-write-binary protocol value))
 

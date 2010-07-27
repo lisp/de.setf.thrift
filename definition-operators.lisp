@@ -175,8 +175,10 @@
                 collect (destructuring-bind (slot-identifier default &key type id documentation (optional nil o-s))
                                             field
                           (assert (typep id 'fixnum))
+                          (when (struct-type-p type)    ; coerce this early to avoid package problems
+                            (setf type `(struct, (str-sym (second type)))))
                           `(,slot-name
-                            :initarg ,(cons-symbol :keyword slot-identifier)
+                            ;; no initargs (see below) :initarg ,(cons-symbol :keyword slot-identifier)
                             :accessor ,slot-accessor-name
                             ,@(when type `(:type ,type))
                             :identifier-number ,id
@@ -191,9 +193,20 @@
          ,@(when condition-class `((:condition-class ,condition-class)))
          ,@(when documentation `((:documentation ,(string-trim *whitespace* documentation)))))
        ,@(unless condition-class
+           ;; generate an initializer which uses setters in order to support type coercion
            `((defun ,make-name (&rest -initargs- &key ,@slot-names)
                (declare (ignore ,@slot-names))
                (apply #'make-instance ',name -initargs-))
+             (defmethod initialize-instance ((instance ,name) &key
+                                             ,@(loop for slot-name in slot-names
+                                                     collect `(,slot-name
+                                                               nil
+                                                               ,(cons-symbol (symbol-package slot-name) slot-name :-s))))
+               ,@(loop for slot-name in slot-names
+                       for accessor in accessor-names
+                       collect `(when ,(cons-symbol (symbol-package slot-name) slot-name :-s)
+                                  (setf (,accessor instance) ,slot-name)))
+               (call-next-method))
              (defmethod print-object ((object ,name) (stream t))
                (print-unreadable-object (object stream :type t :identity t)
                  ,@(loop for slot-name in slot-names
@@ -243,6 +256,8 @@
                 collect (destructuring-bind (slot-identifier default &key type id documentation optional)
                                             field
                           (declare (ignore id optional))
+                          (when (struct-type-p type)    ; coerce this early to avoid package problems
+                            (setf type `(struct, (str-sym (second type)))))
                           `(,(str-sym slot-identifier)
                             :initarg ,(cons-symbol :keyword slot-identifier)
                             :accessor ,(str-sym identifier "-" slot-identifier)

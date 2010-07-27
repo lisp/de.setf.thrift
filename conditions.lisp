@@ -89,6 +89,8 @@
           (list (application-error-condition error))))
 
 
+(defmethod thrift:type-of ((value thrift-error))
+  'struct)
 
 ;;;
 ;;; concrete exceptions
