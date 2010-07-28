@@ -113,6 +113,8 @@
    :stream-read-bool
    :stream-read-double
    :stream-read-field
+   :stream-read-field-begin
+   :stream-read-field-end
    :stream-read-i08
    :stream-read-i16
    :stream-read-i32

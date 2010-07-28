@@ -178,7 +178,9 @@
                           (when (struct-type-p type)    ; coerce this early to avoid package problems
                             (setf type `(struct, (str-sym (second type)))))
                           `(,slot-name
-                            ;; no initargs (see below) :initarg ,(cons-symbol :keyword slot-identifier)
+                            ;; initargs for exception classes only (see initialize-instance, below
+                            ,@(when condition-class
+                                `(:initarg ,(cons-symbol :keyword slot-identifier)))
                             :accessor ,slot-accessor-name
                             ,@(when type `(:type ,type))
                             :identifier-number ,id
@@ -285,7 +287,7 @@
  FIELD-DEFINITIONS : a list of field definitions - either definition metaobjects or definition declarations
  EXTRA-FIELD-PLIST : a variable bound to a plist in which unknown fields are to be cached."
 
-  (with-gensyms (value expected-class read-class read-type)
+  (with-gensyms (expected-class read-class read-type)
     `(let* ((,expected-class ,class-form)
             (,read-class (stream-read-struct-begin ,prot))
             (,read-type (when ,read-class (struct-name ,read-class))))
@@ -299,14 +301,17 @@
                          for id = (field-definition-identifier-number fd)
                          for field-type = (field-definition-type fd)
                          do (list fd id)
-                         collect `(,id 
-                                   (if (equal read-field-type ',(type-category field-type))
-                                     (setf ,(field-definition-name fd)
-                                           (stream-read-value-as ,prot ',field-type))
-                                     (let ((,value (stream-read-value-as ,prot read-field-type)))
-                                       (invalid-field-type ,prot ,read-class ,id name ',field-type ,value)
-                                       ;; iff it returns
-                                       (setf ,(field-definition-name fd) ,value)))))
+                         collect `(,id
+                                   (setf ,(field-definition-name fd)
+                                         (cond ,@(when (eq field-type 'binary)
+                                                   `(((eq read-field-type 'string)
+                                                      (stream-read-binary ,prot))))
+                                               ((equal read-field-type ',(type-category field-type))
+                                                (stream-read-value-as ,prot ',field-type))
+                                               (t
+                                                ;; iff it returns
+                                                (invalid-field-type ,prot ,read-class ,id name ',field-type
+                                                                    (stream-read-value-as ,prot read-field-type)))))))
                  (t
                   ;; handle unknown fields
                   (let* ((value (stream-read-value-as ,prot read-field-type))
@@ -383,7 +388,7 @@
                    (exception
                     ;; received an exception as a response
                     (response-exception ,gprot request-message-identifier sequence
-                                        (prog1 (stream-read-struct ,gprot)
+                                        (prog1 (stream-read-struct ,gprot *response-exception-type*)
                                           (stream-read-message-end ,gprot))))))))))))
     
 

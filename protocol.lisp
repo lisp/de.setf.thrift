@@ -329,6 +329,7 @@
              type (stream-read-type protocol))))
     (values identifier id-number type)))
 
+
 (defmethod stream-read-field-end ((protocol protocol))
   "The base method does nothing.")
 
@@ -343,11 +344,18 @@
                        (stream-read-field-begin protocol)
     (if (eq read-type 'stop)
       (values nil nil 0 'stop)
-      (let* ((value (stream-read-value-as protocol read-type)))
+      ;; constraint the read type to match the expected if one is provided.
+      ;; allow for the ambiguity between string and binary types as there is just one type code
+      (let ((field-value (cond ((and (eq type 'binary) (eq read-type 'string))
+                                (stream-read-binary protocol))
+                               ((or (null type) (equal (type-category type) read-type))
+                                (stream-read-value-as protocol read-type))
+                               (t
+                                ;; signal an error, but use whatever it returns
+                                (invalid-field-type protocol nil idnr identifier type
+                                                    (stream-read-value-as protocol read-type))))))
         (stream-read-field-end protocol)
-        (when type (unless (equal (type-category type) read-type)
-                     (invalid-field-type protocol nil idnr identifier type value)))
-        (values value identifier idnr)))))
+        (values field-value identifier idnr)))))
 
 ;;; a compiler macro would find no use, since the macro expansion for reading a struct already
 ;;; incorporates dispatches on field id to an inline-able call stream-read-value-as, while stream-read-field
@@ -1206,8 +1214,10 @@
  The base method for binary protocols signals a field-type-error")
 
   (:method ((protocol protocol) (structure-type t) (id-number t) (name t) (expected-type t) (value t))
-    (error 'field-type-error :protocol protocol
-           :structure-type structure-type :name name :number id-number :expected-type expected-type :datum value)))
+    (cerror "Use the value."
+            'field-type-error :protocol protocol
+            :structure-type structure-type :name name :number id-number :expected-type expected-type :datum value)
+    value))
 
 
 (defgeneric invalid-element-type (protocol container-type expected-type type)

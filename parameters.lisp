@@ -38,6 +38,7 @@
     (i64 . 10)
     (string . 11)
     (utf7   . 11)
+    (binary . 11)
     (struct . 12)
     (thrift:map . 13)
     (thrift:set . 14)
@@ -67,6 +68,7 @@
     (i64 . integer)
     (string . string)
     (utf7   . string)
+    (binary . vector)
     (struct . standard-object)
     (thrift:map . cl:list)
     (thrift:set . cl:list)
@@ -98,6 +100,7 @@
 
 (defparameter *whitespace* #(#\space #\tab #\linefeed #\return))
 
+(defparameter *response-exception-type* 'response-exception)
 
 ;;; the thrfit class registry binds class names (_not identifiers_) to either the
 ;;; 
