@@ -92,6 +92,15 @@
 (defmethod thrift:type-of ((value thrift-error))
   'struct)
 
+
+;;;
+;;; general exception response
+
+(thrift:def-exception "ResponseException"
+  "The general 'exception' response exception"
+  (("why" nil :id 1 :type string)
+   ("id" nil :id 2 :type i16)))
+
 ;;;
 ;;; concrete exceptions
 
