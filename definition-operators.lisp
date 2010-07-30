@@ -203,10 +203,10 @@
                                              ,@(loop for slot-name in slot-names
                                                      collect `(,slot-name
                                                                nil
-                                                               ,(cons-symbol (symbol-package slot-name) slot-name :-s))))
+                                                               ,(cons-symbol *package* slot-name :-s))))
                ,@(loop for slot-name in slot-names
                        for accessor in accessor-names
-                       collect `(when ,(cons-symbol (symbol-package slot-name) slot-name :-s)
+                       collect `(when ,(cons-symbol *package* slot-name :-s)
                                   (setf (,accessor instance) ,slot-name)))
                (call-next-method))
              (defmethod print-object ((object ,name) (stream t))
