@@ -865,8 +865,9 @@
         ;; if it's a literal environment, expand it in-line
         (with-optional-gensyms (prot) env
           `(progn (stream-write-struct-begin ,prot ,identifier)
-                  ,@(loop for (nil id place) in (rest value)
-                          for fd = (or (find id field-definitions :key #'field-definition-identifier-number)
+                  ,@(loop for (nil id place) in (rest value)    ; ignore the 'cons'
+                          for fd = (or (or (find id field-definitions :key #'field-definition-identifier-number)
+                                           (find id field-definitions :key #'field-definition-name))
                                        (error "Field id not found: ~s, ~s" id identifier))
                           do (list id place fd)
                           collect `(stream-write-field ,prot ,place
