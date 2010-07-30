@@ -867,11 +867,11 @@
           `(progn (stream-write-struct-begin ,prot ,identifier)
                   ,@(loop for (nil id place) in (rest value)    ; ignore the 'cons'
                           for fd = (or (or (find id field-definitions :key #'field-definition-identifier-number)
-                                           (find id field-definitions :key #'field-definition-name))
+                                           (find id field-definitions :key #'field-definition-name :test #'string-equal))
                                        (error "Field id not found: ~s, ~s" id identifier))
                           do (list id place fd)
                           collect `(stream-write-field ,prot ,place
-                                                       :identifier-number ,id
+                                                       :identifier-number ,(field-definition-identifier-number fd)
                                                        :identifier-name ,(field-definition-identifier fd)
                                                        :type ',(field-definition-type fd)))
                   (stream-write-field-stop ,prot)
