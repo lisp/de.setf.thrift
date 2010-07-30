@@ -122,6 +122,24 @@
                 (unpack-buffer)
                 (ieee-754-64-integer-to-float value))))
 
+(defmethod stream-read-single ((protocol binary-protocol))
+  ;; this is not part of the thrift spec, but is useful elsewhere
+  (let ((value 0)
+        (buffer (make-array 4 :element-type '(unsigned-byte 8))))
+    (declare (dynamic-extent buffer)
+             (type (simple-array (unsigned-byte 8) (4)) buffer)
+             (type (unsigned-byte 32) value))
+    (stream-read-sequence (protocol-input-transport protocol) buffer)
+    ;; it it matters, could unwrap it with fewer intermediates saves
+    (macrolet ((unpack-buffer ()
+                 `(progn
+                    ,@(loop for i from 0 below 4
+                            collect `(setf value ,(if (= i 0)
+                                                    `(aref buffer ,i)
+                                                    `(+ (ash value 8) (aref buffer ,i))))))))
+      (unpack-buffer)
+      (ieee-754-32-integer-to-float value))))
+
             
 (defmethod stream-read-string ((protocol binary-protocol))
   (let* ((l (stream-read-i32 protocol))
@@ -215,14 +233,41 @@
               (stream-write-sequence (protocol-output-transport protocol) buffer)
               8))
 
+(defmethod stream-write-double ((protocol binary-protocol) val)
+  ;; this is not part of the spec, but is usefule elsewhere
+  ;; distinct from i64, as it's unsigned
+  #-allegro (let ((buffer (make-array 4 :element-type '(unsigned-byte 8)))
+                  (int-value (ieee-754-32-float-to-integer val)))
+              (declare (dynamic-extent buffer)
+                       (type (simple-array (unsigned-byte 8) (4)) buffer)
+                       (type (unsigned-byte 32) int-value))
+              ;; if the conversion is correct, this is redundant, sbcl eliminate it
+              (assert  (typep int-value '(unsigned-byte 32)) ()
+                       'type-error :datum int-value :expected-type '(unsigned-byte 64))
+              ;; (format *trace-output* "~%(out 0x~16,'0x)" int-value)
+              (macrolet ((pack-buffer ()
+                           `(progn ,@(loop for i from 4 downto 0
+                                           append `((setf (aref buffer ,i) (logand #xff int-value))
+                                                    (setf int-value (ash int-value -8)))))))
+                (pack-buffer))
+              (stream-write-sequence (protocol-output-transport protocol) buffer)
+              4))
 
-(defmethod stream-write-string ((protocol binary-protocol) string &optional (start 0) end)
+
+(defmethod stream-write-string ((protocol binary-protocol) (string string) &optional (start 0) end)
   (assert (and (zerop start) (or (null end) (= end (length string)))) ()
           "Substring writes are not supported.")
   (let ((bytes (funcall (transport-string-encoder protocol) string)))
     (stream-write-i32 protocol (length bytes))
     (stream-write-sequence (protocol-output-transport protocol) bytes)
     (+ 4 (length bytes))))
+
+(defmethod stream-write-string ((protocol binary-protocol) (bytes vector) &optional (start 0) end)
+  (assert (and (zerop start) (or (null end) (= end (length bytes)))) ()
+          "Substring writes are not supported.")
+  (stream-write-i32 protocol (length bytes))
+  (stream-write-sequence (protocol-output-transport protocol) bytes)
+  (+ 4 (length bytes)))
 
 
 (defmethod stream-write-binary ((protocol binary-protocol) (bytes vector))

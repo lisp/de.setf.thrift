@@ -132,6 +132,7 @@
    :stream-read-set
    :stream-read-set-begin
    :stream-read-set-end
+   :stream-read-single
    :stream-read-string
    :stream-read-struct
    :stream-read-struct-begin
@@ -151,6 +152,7 @@
    :stream-write-message
    :stream-write-message-type
    :stream-write-set
+   :stream-write-single
    :stream-write-string
    :stream-write-struct
    :stream-write-type
