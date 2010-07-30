@@ -236,22 +236,22 @@
 (defmethod stream-write-single ((protocol binary-protocol) val)
   ;; this is not part of the spec, but is usefule elsewhere
   ;; distinct from i34, as it's unsigned
-  #-allegro (let ((buffer (make-array 4 :element-type '(unsigned-byte 8)))
-                  (int-value (ieee-754-32-float-to-integer val)))
-              (declare (dynamic-extent buffer)
-                       (type (simple-array (unsigned-byte 8) (4)) buffer)
-                       (type (unsigned-byte 32) int-value))
-              ;; if the conversion is correct, this is redundant, sbcl eliminate it
-              (assert  (typep int-value '(unsigned-byte 32)) ()
-                       'type-error :datum int-value :expected-type '(unsigned-byte 64))
-              ;; (format *trace-output* "~%(out 0x~16,'0x)" int-value)
-              (macrolet ((pack-buffer ()
-                           `(progn ,@(loop for i from 4 downto 0
-                                           append `((setf (aref buffer ,i) (logand #xff int-value))
-                                                    (setf int-value (ash int-value -8)))))))
-                (pack-buffer))
-              (stream-write-sequence (protocol-output-transport protocol) buffer)
-              4))
+  (let ((buffer (make-array 4 :element-type '(unsigned-byte 8)))
+        (int-value (ieee-754-32-float-to-integer val)))
+    (declare (dynamic-extent buffer)
+             (type (simple-array (unsigned-byte 8) (4)) buffer)
+             (type (unsigned-byte 32) int-value))
+    ;; if the conversion is correct, this is redundant, sbcl eliminate it
+    (assert  (typep int-value '(unsigned-byte 32)) ()
+             'type-error :datum int-value :expected-type '(unsigned-byte 64))
+    ;; (format *trace-output* "~%(out 0x~16,'0x)" int-value)
+    (macrolet ((pack-buffer ()
+                 `(progn ,@(loop for i from 3 downto 0
+                                 append `((setf (aref buffer ,i) (logand #xff int-value))
+                                          (setf int-value (ash int-value -8)))))))
+      (pack-buffer))
+    (stream-write-sequence (protocol-output-transport protocol) buffer)
+    4))
 
 
 (defmethod stream-write-string ((protocol binary-protocol) (string string) &optional (start 0) end)
