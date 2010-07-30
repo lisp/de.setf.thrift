@@ -233,9 +233,9 @@
               (stream-write-sequence (protocol-output-transport protocol) buffer)
               8))
 
-(defmethod stream-write-double ((protocol binary-protocol) val)
+(defmethod stream-write-single ((protocol binary-protocol) val)
   ;; this is not part of the spec, but is usefule elsewhere
-  ;; distinct from i64, as it's unsigned
+  ;; distinct from i34, as it's unsigned
   #-allegro (let ((buffer (make-array 4 :element-type '(unsigned-byte 8)))
                   (int-value (ieee-754-32-float-to-integer val)))
               (declare (dynamic-extent buffer)
