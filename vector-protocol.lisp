@@ -1,6 +1,6 @@
-;;; -*- Mode: lisp; Syntax: ansi-common-lisp; Base: 10; Package: thrift-test; -*-
+;;; -*- Mode: lisp; Syntax: ansi-common-lisp; Base: 10; Package: org.apache.thrift.implementation; -*-
 
-(in-package :thrift-test)
+(in-package :org.apache.thrift.implementation)
 
 ;;; define a binary stream to wrap a vector for use in tests.
 ;;; adapted from the cl-xml version to restrict i/o to unsigned byte operations.
@@ -16,7 +16,7 @@
     :initform 0
     :reader get-stream-position :writer setf-stream-position)
    (vector
-    :reader get-vector-stream-vector :writer setf-vector-stream-vector
+    :accessor vector-stream-vector
     :type vector)
    (force-output-hook
     :initform nil :initarg :force-output-hook
@@ -60,23 +60,24 @@
   (make-array length :element-type type :initial-element 0))
 
 (defmethod shared-initialize
-           ((instance vector-stream) (slots t) &key (vector nil vector-s))
+           ((instance vector-stream) (slots t) &key (vector nil vector-s) (length 128))
   (with-slots (position) instance
     (setf position 0)
     (when vector-s
-      (setf-vector-stream-vector
-       (etypecase vector
-         (string (setf vector (map 'vector #'char-code vector)))
-         (cl:list (setf vector (map 'vector #'(lambda (datum)
-                                                (etypecase datum
-                                                  (fixnum datum)
-                                                  (character (char-code datum))))
-                                    vector)))
-         (vector vector))
-       instance))
+      (setf (vector-stream-vector instance)
+            (etypecase vector
+              (string (map-into (make-vector-stream-buffer (length vector)) #'char-code vector))
+              (cl:cons (map-into (make-vector-stream-buffer (length vector))
+                                 #'(lambda (datum)
+                                     (etypecase datum
+                                       (fixnum datum)
+                                       (character (char-code datum))))
+                                 vector))
+              (vector vector)
+              (null (setf (vector-stream-vector instance) (make-vector-stream-buffer length))))))
     (call-next-method)
     (unless (slot-boundp instance 'vector)
-      (setf-vector-stream-vector (make-vector-stream-buffer 128) instance))))
+      (setf (vector-stream-vector instance) (make-vector-stream-buffer length)))))
 
 #+cmu
 (let ((old-definition (fdefinition 'stream-element-type)))
@@ -108,7 +109,7 @@
            ((vs vector-stream) (stream t)
             &aux (*print-array* t) (*print-length* 32) (*print-base* 16))
   (print-unreadable-object (vs stream :type t)
-    (princ (get-vector-stream-vector vs) stream)))
+    (princ (vector-stream-vector vs) stream)))
 
 (defmethod stream-force-output ((stream vector-stream))
   (let ((hook (stream-force-output-hook stream)))
@@ -179,32 +180,3 @@
                  :start2 start :end2 end)
         (setf position new-position))
       new-position)))
-
-
-;;;
-;;;
-
-#+(or)
-(progn
-  (stream-write-byte (make-instance 'vector-stream-transport) 1)
-  (stream-write-byte (make-instance 'vector-stream-transport) -1)
-  (let* ((data #(0 1 2 3 4 5 6 7 8 9 246 247 248 249 250 251 252 253 254 255))
-         (buffer (make-array 2 :element-type thrift::*binary-transport-element-type*))
-         (outstream (make-instance 'vector-output-stream :vector buffer))
-         (instream (make-instance 'vector-input-stream :vector nil)))
-    (write-sequence data outstream)
-    (map nil #'(lambda (c) (stream-write-byte outstream (char-code c))) "asdf")
-
-    (and (every #'eql
-                (concatenate 'vector data (map 'vector #'char-code "asdf"))
-                (subseq (get-vector-stream-vector outstream) 0 (stream-position outstream)))
-         (let ((data2 (make-array (length data)))
-               (data3 (make-array 4)))
-           (setf-vector-stream-vector (get-vector-stream-vector outstream) instream)
-           (and (eql (stream-read-sequence instream data2) (length data2))
-                (equalp data2 data))
-           (eql (stream-read-sequence instream data3) 4)
-           (equal (map 'string #'code-char data3) "asdf"))))
-  )
-
-

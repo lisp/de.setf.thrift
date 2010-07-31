@@ -35,7 +35,9 @@
 (deftype i16 () '(signed-byte 16))
 (deftype i32 () '(signed-byte 32))
 (deftype i64 () '(signed-byte 64))
-;; double is standard
+(deftype thrift:float ()
+  "distinguish float from double for explicit struct codecs"
+  'single-float)
 ;; string is standard
 (deftype double () 'double-float)
 ;;; this is not what the spec says (it claims i08), but that makes no sense
@@ -61,7 +63,7 @@
   'list)
 
 
-(deftype base-type () '(member bool thrift:byte i08 i16 i32 i64 double string binary))
+(deftype base-type () '(member bool thrift:byte i08 i16 i32 i64 double thrift:float string binary))
 
 (defun base-type-p (type)
   (typep type 'base-type))
@@ -124,19 +126,20 @@
   (:documentation "Implements an equivalent to cl:type-of, but return the most specific thrift
  type instead of the cl type. This is used to determine the encoding for dynamically generated
  messages.")
-
+  
   (:method ((value null))
     'bool)
   (:method ((value (eql t)))
     'bool)
   (:method ((value integer))
     (etypecase value
-     (i08 'thrift:byte)
-     (i16 'i16)
-     (i32 'i32)
-     (i64 'i64)))
+      (i08 'thrift:byte)
+      (i16 'i16)
+      (i32 'i32)
+      (i64 'i64)))
   (:method ((value float))
-   'double)
+    "return double for all floats as the single form is non-standard"
+    'double)
   (:method ((value string))
     'string)
   (:method ((value vector))

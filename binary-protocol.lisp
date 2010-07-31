@@ -122,7 +122,9 @@
                 (unpack-buffer)
                 (ieee-754-64-integer-to-float value))))
 
-(defmethod stream-read-single ((protocol binary-protocol))
+(defmethod stream-read-float ((protocol binary-protocol))
+  "As a special for for use with rdf - not part of the thrift. used just for specifically
+ coded struct declarations."
   ;; this is not part of the thrift spec, but is useful elsewhere
   (let ((value 0)
         (buffer (make-array 4 :element-type '(unsigned-byte 8))))
@@ -233,8 +235,8 @@
               (stream-write-sequence (protocol-output-transport protocol) buffer)
               8))
 
-(defmethod stream-write-single ((protocol binary-protocol) val)
-  ;; this is not part of the spec, but is usefule elsewhere
+(defmethod stream-write-float ((protocol binary-protocol) val)
+  " Not part of the spec, but is useful elsewhere"
   ;; distinct from i34, as it's unsigned
   (let ((buffer (make-array 4 :element-type '(unsigned-byte 8)))
         (int-value (ieee-754-32-float-to-integer val)))

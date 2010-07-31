@@ -4,7 +4,7 @@
 
 
 (defpackage :thrift-test
-  (:shadowing-import-from :thrift :byte :set :list :map :type-of)
+  (:shadowing-import-from :thrift :byte :set :list :map :type-of :float)
   (:use :common-lisp :thrift)
   #+ccl
   (:import-from :ccl :stream-tyo :stream-tyi :stream-reader :stream-writer

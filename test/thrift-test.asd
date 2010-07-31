@@ -8,7 +8,7 @@
   :description "tests for com.apache.thrift"
   :serial t
   :components ((:file "package")
-               (:file "vector-stream")
+               (:file "vector-protocol")
                (:file "test")
                (:file "conditions")
                (:file "definition-operators")

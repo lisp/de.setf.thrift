@@ -79,6 +79,7 @@
    :field-definition-type
    :field-size-error
    :field-type-error
+   :float
    :method-definition
    :i08
    :i16
@@ -115,6 +116,7 @@
    :stream-read-field
    :stream-read-field-begin
    :stream-read-field-end
+   :stream-read-float
    :stream-read-i08
    :stream-read-i16
    :stream-read-i32
@@ -132,7 +134,6 @@
    :stream-read-set
    :stream-read-set-begin
    :stream-read-set-end
-   :stream-read-single
    :stream-read-string
    :stream-read-struct
    :stream-read-struct-begin
@@ -143,6 +144,7 @@
    :stream-write-bool
    :stream-write-double
    :stream-write-field
+   :stream-write-float
    :stream-write-i08
    :stream-write-i16
    :stream-write-i32
@@ -152,7 +154,6 @@
    :stream-write-message
    :stream-write-message-type
    :stream-write-set
-   :stream-write-single
    :stream-write-string
    :stream-write-struct
    :stream-write-type
@@ -174,6 +175,10 @@
    :unknown-field-error
    :unknown-method
    :unknown-method-error
+   :vector-input-stream
+   :vector-output-stream
+   :vector-stream-transport
+   :vector-stream-vector
    :void
    ))
 
@@ -189,7 +194,7 @@
   It also imports names as required per run-time for access to standard floating point constants and gray
  stream operators.")
 
-  (:shadowing-import-from :common-lisp :byte :set :list :map :type-of)
+  (:shadowing-import-from :common-lisp :byte :set :list :map :type-of :float)
 
   #+ccl
   (:import-from :ccl

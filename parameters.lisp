@@ -31,6 +31,7 @@
     (thrift:byte . 3)
     (i08  . 3)
     (double . 4)
+    (thrift:float . 5)                         ; this is not standard
     (i16 . 6)
     (enum . 6)
     (i32 . 8)
