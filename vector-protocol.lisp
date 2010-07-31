@@ -16,7 +16,7 @@
     :initform 0
     :reader get-stream-position :writer setf-stream-position)
    (vector
-    :accessor vector-stream-vector
+    :reader get-vector-stream-vector :writer setf-vector-stream-vector
     :type vector)
    (force-output-hook
     :initform nil :initarg :force-output-hook
@@ -64,20 +64,21 @@
   (with-slots (position) instance
     (setf position 0)
     (when vector-s
-      (setf (vector-stream-vector instance)
-            (etypecase vector
-              (string (map-into (make-vector-stream-buffer (length vector)) #'char-code vector))
-              (cl:cons (map-into (make-vector-stream-buffer (length vector))
-                                 #'(lambda (datum)
-                                     (etypecase datum
-                                       (fixnum datum)
-                                       (character (char-code datum))))
-                                 vector))
-              (vector vector)
-              (null (setf (vector-stream-vector instance) (make-vector-stream-buffer length))))))
+      (setf-vector-stream-vector
+       (etypecase vector
+         (string (map-into (make-vector-stream-buffer (length vector)) #'char-code vector))
+         (cl:cons (map-into (make-vector-stream-buffer (length vector))
+                            #'(lambda (datum)
+                                (etypecase datum
+                                  (fixnum datum)
+                                  (character (char-code datum))))
+                            vector))
+         (vector vector)
+         (null (make-vector-stream-buffer length)))
+       instance))
     (call-next-method)
     (unless (slot-boundp instance 'vector)
-      (setf (vector-stream-vector instance) (make-vector-stream-buffer length)))))
+      (setf-vector-stream-vector (make-vector-stream-buffer length) instance))))
 
 #+cmu
 (let ((old-definition (fdefinition 'stream-element-type)))
@@ -109,7 +110,7 @@
            ((vs vector-stream) (stream t)
             &aux (*print-array* t) (*print-length* 32) (*print-base* 16))
   (print-unreadable-object (vs stream :type t)
-    (princ (vector-stream-vector vs) stream)))
+    (princ (get-vector-stream-vector vs) stream)))
 
 (defmethod stream-force-output ((stream vector-stream))
   (let ((hook (stream-force-output-hook stream)))
@@ -119,6 +120,10 @@
 (defmethod open-stream-p ((stream vector-stream))
   t)
 
+(defgeneric vector-stream-vector (vector-stream)
+  (:method ((stream vector-stream))
+    (with-slots (vector position) stream
+      (subseq vector 0 position))))
 
 ;;;
 ;;; input

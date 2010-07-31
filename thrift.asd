@@ -42,6 +42,7 @@
                (:file "conditions")
                (:file "protocol")
                (:file "binary-protocol")
+               (:file "vector-protocol")
                (:file "client")
                (:file "server"))
 
