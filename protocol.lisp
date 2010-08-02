@@ -216,7 +216,7 @@
 ;;; protocol operators
 
 
-(defmethod initialize-instance ((transport encoded-protocol) &rest initargs &key (charset nil))
+(defmethod initialize-instance ((protocol encoded-protocol) &rest initargs &key (charset nil))
   (declare (dynamic-extent initargs))
   (multiple-value-bind (decoder encoder)
                        (ecase charset
@@ -224,7 +224,7 @@
                                         #'(lambda (bytes) (map 'string #'code-char bytes))))
                          (:utf8 (values #'trivial-utf-8:utf-8-bytes-to-string
                                         #'trivial-utf-8:string-to-utf-8-bytes)))
-    (apply #'call-next-method transport
+    (apply #'call-next-method protocol
            :string-encoder encoder
            :string-decoder decoder
            initargs)))
