@@ -121,7 +121,7 @@
   t)
 
 (defgeneric vector-stream-vector (vector-stream)
-  (:documentation "Return the subsequence 
+  (:documentation "Return the written subsequence and reset the position")
   (:method ((stream vector-stream))
     (with-slots (vector position) stream
       (prog1 (subseq vector 0 position)
