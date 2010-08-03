@@ -121,9 +121,19 @@
   t)
 
 (defgeneric vector-stream-vector (vector-stream)
+  (:documentation "Return the subsequence 
   (:method ((stream vector-stream))
     (with-slots (vector position) stream
-      (subseq vector 0 position))))
+      (prog1 (subseq vector 0 position)
+        (setf position 0)))))
+
+(defgeneric (setf vector-stream-vector) (vector vector-stream)
+  (:method ((new-vector vector) (stream vector-stream))
+    (assert (equal (array-element-type new-vector) *binary-transport-element-type*) ()
+            "Invalid vector stream element type: ~s." (array-element-type new-vector))
+    (with-slots (vector position) stream
+      (setf position 0
+            vector new-vector))))
 
 ;;;
 ;;; input
