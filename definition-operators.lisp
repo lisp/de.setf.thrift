@@ -321,6 +321,9 @@
                       (unknown-field ,prot name id read-field-type value)))))
                (stream-read-field-end ,prot))))))
 
+(defmacro decode-struct (prot class field-definitions extra-plist)
+  (generate-struct-decoder prot class field-definitions extra-plist))
+
 
 (defmacro def-request-method (name (parameter-list return-type) &rest options)
   "Generate a request function definition.

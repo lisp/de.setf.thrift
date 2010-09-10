@@ -138,7 +138,7 @@
 ;;;
 ;;; input
 
-(defmethod stream-read-byte ((stream vector-stream-transport))
+(defmethod stream-read-byte ((stream vector-input-stream))
   (with-slots (position vector) stream
     (when (< position (length vector))
       (let ((byte (aref vector position)))
@@ -146,6 +146,26 @@
         (if (> byte 127)
           (- (logxor 255 (1- byte)))
           byte)))))
+
+(defmethod stream-read-unsigned-byte ((stream vector-input-stream))
+  (with-slots (position vector) stream
+    (when (< position (length vector))
+      (let ((byte (aref vector position)))
+        (incf position)
+        byte))))
+
+#+ccl
+(defmethod ccl:stream-tyi ((stream vector-input-stream))
+  (stream-read-byte stream))
+
+(defmethod stream-reader ((stream vector-input-stream))
+  (values #'(lambda (stream)
+              (with-slots (position vector) stream
+                (when (< position (length vector))
+                  (let ((byte (aref vector position)))
+                    (incf position)
+                    byte))))
+              stream))
 
 
 (defmethod stream-read-sequence ((stream vector-input-stream) (sequence vector)
@@ -177,6 +197,22 @@
           (logand #xff datum))
     (setf position next)))
 
+
+#+ccl
+(defmethod ccl:stream-tyo ((stream vector-output-stream) byte)
+  (stream-write-byte stream byte))
+
+(defmethod stream-writer ((stream vector-output-stream))
+  (values #'(lambda (stream byte &aux next)
+              (with-slots (position vector) stream
+                (unless (< (setf next (1+ position)) (length vector))
+                  (setf vector
+                        (adjust-array vector (+ next (floor (/ next 4)))
+                                      :element-type *binary-transport-element-type*)))
+                (setf (aref vector position)
+                      (logand #xff byte))
+                (setf position next)))
+              stream))
 
 (defmethod stream-write-sequence ((stream vector-output-stream) (sequence vector)
                                   #+mcl &key #-mcl &optional (start 0) (end nil))

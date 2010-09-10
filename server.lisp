@@ -175,7 +175,6 @@
                                                       (return-from :process-loop))))
                                 (loop (unless (open-stream-p input-transport) (return))
                                       (process service protocol))))
-              (print (list :closing connection (usocket:socket-stream connection)))
               (close input-transport)
               (close output-transport)))
           ;; listening socket closed
