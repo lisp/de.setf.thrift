@@ -63,7 +63,9 @@
   'list)
 
 
-(deftype base-type () '(member bool thrift:byte i08 i16 i32 i64 double thrift:float string binary))
+(deftype base-type ()
+  "Indicates the union of thrift base (atomic) types."
+  '(member bool thrift:byte i08 i16 i32 i64 double thrift:float string binary))
 
 (defun base-type-p (type)
   (typep type 'base-type))

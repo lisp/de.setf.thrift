@@ -224,15 +224,18 @@
   (:method ((identifier string))
     identifier))
   
-
-(defmethod c2mop:direct-slot-definition-class ((class thrift-class) &key identifier (identifier-name identifier))
+;;; 20110402 : lw does not allow for standard argument keys, thus the &allow-other-keys here
+(defmethod c2mop:direct-slot-definition-class ((class thrift-class) &key
+                                               identifier (identifier-name identifier)
+                                               &allow-other-keys)
   "If an id is present in the definition, the slot is included to pr included when de/serializing"
   (cond (identifier-name
          (find-class 'direct-field-definition))
         (t
          (call-next-method))))
 
-(defmethod c2mop:effective-slot-definition-class ((class thrift-class) &key name)
+(defmethod c2mop:effective-slot-definition-class ((class thrift-class) &key name
+                                                  &allow-other-keys)
   "If some direct lost definition indicates thrift support, them carry that over to the effective definition"
   (if (some #'(lambda (class)
                 (typep (find name (c2mop:class-direct-slots class) :key #'field-definition-name)
@@ -313,7 +316,26 @@
     ;; for use in macros
     (getf (cddr fd) :type))
   (:method ((sd c2mop:slot-definition))
-    (c2mop:slot-definition-type sd)))
+    (let ((literal-type (c2mop:slot-definition-type sd)))
+      ;; clozure rewrites the types specified in a slot definition
+      (etypecase literal-type
+        (symbol (case literal-type
+                  (boolean 'bool)
+                  (double-float 'thrift:double)
+                  (single-float 'thrift:float)
+                  (base-string 'string)
+                  (t literal-type)))
+        (cons (case (first literal-type)
+                (member (if (or (equal '(member nil t) literal-type) (equal '(member t nil) literal-type))
+                          'bool
+                          literal-type))
+                (signed-byte (ecase (second literal-type)
+                               (8 'i08)
+                               (16 'i16)
+                               (32 'i32)
+                               (64 'i64)))
+                ((array vector) 'binary)
+                (t literal-type)))))))
 
 
 (defgeneric class-field-definitions (class)

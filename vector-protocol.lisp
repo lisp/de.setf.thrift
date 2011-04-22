@@ -154,7 +154,7 @@
         (incf position)
         byte))))
 
-#+ccl
+#+mcl
 (defmethod ccl:stream-tyi ((stream vector-input-stream))
   (stream-read-byte stream))
 
@@ -198,7 +198,7 @@
     (setf position next)))
 
 
-#+ccl
+#+mcl
 (defmethod ccl:stream-tyo ((stream vector-output-stream) byte)
   (stream-write-byte stream byte))
 

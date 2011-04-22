@@ -41,7 +41,9 @@
   #+sbcl
   (:import-from :sb-gray
                 :stream-write-string)
-
+  #+lispworks
+  (:import-from :stream
+                :stream-write-string)
   (:export 
    :*binary-transport-element-type*
    :application-error
@@ -195,28 +197,33 @@
  stream operators.")
 
   (:shadowing-import-from :common-lisp :byte :set :list :map :type-of :float)
-
+  
+  (:import-from :de.setf.utility
+                :stream-reader
+                :stream-writer
+                )
   #+ccl
   (:import-from :ccl
                 :stream-write-byte :stream-read-byte
-                :stream-close :stream-direction
+                :stream-direction
                 :stream-position
-                :stream-read-sequence :stream-write-sequence
                 :stream-force-output :stream-finish-output)
-
+  #+mcl
+  (:import-from :ccl
+                :stream-close
+                :stream-read-sequence :stream-write-sequence
+                :stream-tyi :stream-tyo :stream-untyi)
   #+clozure
   (:import-from :ccl
                 :double-float-positive-infinity
                 :double-float-negative-infinity
                 #+ccl-1.4 :double-float-nan)
-
   #+sbcl
   (:import-from :sb-ext
                 :double-float-positive-infinity
                 :double-float-negative-infinity
                 :single-float-positive-infinity
                 :single-float-negative-infinity)
-
   #+sbcl
   (:import-from :sb-gray
                 :stream-write-byte :stream-read-byte
