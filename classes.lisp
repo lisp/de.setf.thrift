@@ -370,8 +370,6 @@
 ;;; as per metaclass type
 
 (defgeneric make-struct (class &rest initargs)
-  (declare (dynamic-extent initargs))
-
   (:method ((class-name symbol) &rest initargs)
     (declare (dynamic-extent initargs))
     (apply #'make-struct (find-thrift-class class-name) initargs))
