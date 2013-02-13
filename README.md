@@ -22,7 +22,7 @@ under the License.
 
 
 
-Using Trift with Common Lisp
+Using Thrift with Common Lisp
 ============================
 
  Thrift is a protocol and library for language-independent communication between cooperating
