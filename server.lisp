@@ -1,33 +1,31 @@
-;;; -*- Mode: lisp; Syntax: ansi-common-lisp; Base: 10; Package: org.apache.thrift.implementation; -*-
+(in-package #:org.apache.thrift.implementation)
 
-(in-package :org.apache.thrift.implementation)
-
-;;; This file implements service instance and a server interface for the `org.apache.thrift` library.
-;;;
-;;; copyright 2010 [james anderson](james.anderson@setf.de)
-;;;
-;;; Licensed to the Apache Software Foundation (ASF) under one
-;;; or more contributor license agreements. See the NOTICE file
-;;; distributed with this work for additional information
-;;; regarding copyright ownership. The ASF licenses this file
-;;; to you under the Apache License, Version 2.0 (the
-;;; "License"); you may not use this file except in compliance
-;;; with the License. You may obtain a copy of the License at
-;;; 
-;;;   http://www.apache.org/licenses/LICENSE-2.0
-;;; 
-;;; Unless required by applicable law or agreed to in writing,
-;;; software distributed under the License is distributed on an
-;;; "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-;;; KIND, either express or implied. See the License for the
-;;; specific language governing permissions and limitations
-;;; under the License.
+;;;; This file implements service instance and a server interface for the `org.apache.thrift` library.
+;;;;
+;;;; copyright 2010 [james anderson](james.anderson@setf.de)
+;;;;
+;;;; Licensed to the Apache Software Foundation (ASF) under one
+;;;; or more contributor license agreements. See the NOTICE file
+;;;; distributed with this work for additional information
+;;;; regarding copyright ownership. The ASF licenses this file
+;;;; to you under the Apache License, Version 2.0 (the
+;;;; "License"); you may not use this file except in compliance
+;;;; with the License. You may obtain a copy of the License at
+;;;;
+;;;;   http://www.apache.org/licenses/LICENSE-2.0
+;;;;
+;;;; Unless required by applicable law or agreed to in writing,
+;;;; software distributed under the License is distributed on an
+;;;; "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+;;;; KIND, either express or implied. See the License for the
+;;;; specific language governing permissions and limitations
+;;;; under the License.
 
 
-;;; The principal Thrift entity for reomte interaction is the `service`. A service is a named
-;;; collection of operations. A server associates a service with a listening port, accepts
-;;; request for named operations, decodes and dsipatchs data to the service's operations,
-;;; encodes the results and returns them them to thr requesting client.
+;;;; The principal Thrift entity for reomte interaction is the `service`. A service is a named
+;;;; collection of operations. A server associates a service with a listening port, accepts
+;;;; request for named operations, decodes and dsipatchs data to the service's operations,
+;;;; encodes the results and returns them them to thr requesting client.
 
 
 (defclass service ()
@@ -61,7 +59,6 @@
  each service is bound to a global parameter named as its Lisp equivalent. A service can also
  serve as the root for a set of subsidiary services, to which it defers method look-ups."))
 
-
 (defclass server ()
   ((services
     :initform nil :initarg :services
@@ -72,17 +69,18 @@
      an exception is returned."))
   (:documentation "A server associates a root service with a request transport."))
 
-
 (defclass socket-server (server)
   ((socket :accessor server-socket :initarg :socket))
   (:documentation "The server class which combines services with a listening socket."))
 
+(defun thriftp (uri)
+  "Check whether the URI is a Thrift URI."
+  (eql :thrift (puri:uri-scheme uri)))
 
-(defclass thrift (puri:uri)
-  ()
-  (:documentation "A specialized URI class to distinguish Thrift locations when constructing a
- server."))
-
+;;; A special type to easily distinguish Thrift URIs.
+(deftype thrift () '(and
+                     puri:uri
+                     (satisfies thriftp)))
 
 ;;;
 ;;; service operators
@@ -101,21 +99,38 @@
     (format stream "~@[~a~]" (service-identifier object))))
 
 (defgeneric method-definition (service identifier)
+  (:method ((service (eql nil)) identifier))
+  (:method ((services list) (identifier string))
+    (alexandria:when-let* ((pos (position #\: identifier))
+                           (service-identifier (subseq identifier 0 pos))
+                           (method-identifier (subseq identifier (1+ pos))))
+      (alexandria:if-let ((service (find service-identifier
+                                         services
+                                         :test #'string=
+                                         :key #'service-identifier)))
+        (return-from method-definition (method-definition service method-identifier))
+        (dolist (service services)
+          (multiple-value-bind (fun service)
+              (method-definition (service-base-services service) identifier)
+            (when fun (return-from method-definition (values fun service)))))))
+    (dolist (base-service services)
+      (multiple-value-bind (fun service)
+          (method-definition base-service identifier)
+        (when fun (return-from method-definition (values fun service))))))
   (:method ((service service) (identifier string))
     (let ((fun (gethash identifier (service-methods service))))
       (if fun
-        (values fun service)
-        (dolist (base-service (service-base-services service))
-          (multiple-value-bind (fun service)
-                               (method-definition identifier base-service)
-            (when fun (return-from method-definition (values fun service)))))))))
+          (values fun service)
+          (dolist (base-service (service-base-services service))
+            (multiple-value-bind (fun service)
+                (method-definition base-service identifier)
+              (when fun (return-from method-definition (values fun service)))))))))
 
 (defgeneric (setf method-definition) (function service identifier)
-  (:method ((function thrift-generic-function) (service service) (identifier string))
+  (:method ((function function) (service service) (identifier string))
     (setf (gethash identifier (service-methods service)) function))
   (:method ((function null) (service service) (identifier string))
     (remhash identifier (service-methods service))))
-
 
 ;;;
 ;;; server operators
@@ -127,7 +142,6 @@
 (defgeneric server-output-transport (server connection)
   (:method ((server socket-server) (socket usocket:usocket))
     (make-instance 'socket-transport :socket socket :direction :output)))
-    
 
 (defmethod accept-connection ((s socket-server))
   (usocket:socket-accept (server-socket s) :element-type 'unsigned-byte))
@@ -140,64 +154,71 @@
     (make-instance 'binary-protocol :input-transport input :output-transport output
                    :direction :io)))
 
-
 (defparameter *debug-server* t)
 
-(defgeneric serve (connection-server service)
+(defgeneric serve (connection-server service &key &allow-other-keys)
   (:documentation "Accept to a CONNECTION-SERVER, configure the CLIENT's transport and protocol
  in combination with the connection, and process messages until the connection closes.")
 
-  (:method ((location thrift) service)
+  (:method ((location puri:uri) service
+            &key framed (multiplexed (listp service)) &allow-other-keys)
     "Given a basic thrift uri, open a binary socket server and listen on the port."
     (let ((server (make-instance 'socket-server
-                    :socket (usocket:socket-listen (puri:uri-host location) (puri:uri-port location)
-                                                   :element-type 'unsigned-byte
-                                                   :reuseaddress t))))
-      (unwind-protect (serve server service)
+                                 :socket (usocket:socket-listen (puri:uri-host location)
+                                                                (puri:uri-port location)
+                                                                :element-type 'unsigned-byte
+                                                                :reuseaddress t)
+                                 :services (alexandria:ensure-list service))))
+      (unwind-protect (serve server
+                             (server-services server)
+                             :framed framed
+                             :multiplexed multiplexed)
         (server-close server))))
 
-  (:method ((s socket-server) (service service))
-    (loop 
+  (:method ((s socket-server) (services list) &key framed multiplexed &allow-other-keys)
+    (loop
       (let ((connection (accept-connection s)))
         (if (open-stream-p (usocket:socket-stream connection))
-          (let* ((input-transport (server-input-transport s connection))
-                 (output-transport (server-output-transport s connection))
-                 (protocol (server-protocol s input-transport output-transport)))
-            (unwind-protect (block :process-loop
-                              (handler-bind ((end-of-file (lambda (eof)
-                                                            (declare (ignore eof))
-                                                            (return-from :process-loop)))
-                                             (error (lambda (error)
-                                                      (if *debug-server*
-                                                        (break "Server error: ~s: ~a" s error)
-                                                        (warn "Server error: ~s: ~a" s error))
-                                                      (stream-write-exception protocol error)
-                                                      (return-from :process-loop))))
-                                (loop (unless (open-stream-p input-transport) (return))
-                                      (process service protocol))))
+          (let ((input-transport (server-input-transport s connection))
+                (output-transport (server-output-transport s connection)))
+            (when framed
+              (setf input-transport (framed-transport input-transport))
+              (setf output-transport (framed-transport output-transport)))
+            (let ((protocol (server-protocol s input-transport output-transport)))
+              (setf (slot-value protocol 'multiplexed) multiplexed)
+              (unwind-protect (block :process-loop
+                                (handler-bind ((end-of-file (lambda (eof)
+                                                              (declare (ignore eof))
+                                                              (return-from :process-loop)))
+                                               (error (lambda (error)
+                                                        (if *debug-server*
+                                                            (break "Server error: ~s: ~a" s error)
+                                                            (warn "Server error: ~s: ~a" s error))
+                                                        (stream-write-exception protocol error)
+                                                        (return-from :process-loop))))
+                                  (loop while (open-stream-p input-transport)
+                                     do (process services protocol))))
               (close input-transport)
-              (close output-transport)))
+              (close output-transport))))
           ;; listening socket closed
           (return))))))
 
-  
 (defgeneric process (service protocol)
   (:documentation "Combine a service PEER with an input-protocol and an output-protocol to control processing
  the next message on the peer's input connection. The base method reads the message, decodes the
  function and the arguments, invokes the method, and replies with the results.
  The protocols are initially those of the peer itself, but they are passed her in order to permit
  wrapping for logging, etc.")
-
-  (:method ((service service) (protocol t))
+  (:method ((services list) (protocol protocol))
     (flet ((consume-message ()
              (prog1 (stream-read-struct protocol)
                (stream-read-message-end protocol))))
       (multiple-value-bind (request-identifier type sequence-number)
-                           (stream-read-message-begin protocol)
+          (stream-read-message-begin protocol)
         (ecase type
           ((call oneway)
            (multiple-value-bind (request-method service)
-                                (method-definition service request-identifier)
+               (method-definition services request-identifier)
              (cond (request-method
                     (let ((*package* (service-package service)))
                       (funcall request-method service sequence-number protocol)))
@@ -207,5 +228,3 @@
            (unexpected-response protocol request-identifier sequence-number (consume-message)))
           (exception
            (request-exception protocol request-identifier sequence-number (consume-message))))))))
-
-

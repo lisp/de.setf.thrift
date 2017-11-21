@@ -1,27 +1,25 @@
-;;; -*- Mode: lisp; Syntax: ansi-common-lisp; Base: 10; Package: org.apache.thrift.implementation; -*-
+(in-package #:org.apache.thrift.implementation)
 
-(in-package :org.apache.thrift.implementation)
-
-;;; This file defines the abstract and metaclass definitions for the `org.apache.thrift` library.
-;;;
-;;; copyright 2010 [james anderson](james.anderson@setf.de)
-;;;
-;;; Licensed to the Apache Software Foundation (ASF) under one
-;;; or more contributor license agreements. See the NOTICE file
-;;; distributed with this work for additional information
-;;; regarding copyright ownership. The ASF licenses this file
-;;; to you under the Apache License, Version 2.0 (the
-;;; "License"); you may not use this file except in compliance
-;;; with the License. You may obtain a copy of the License at
-;;; 
-;;;   http://www.apache.org/licenses/LICENSE-2.0
-;;; 
-;;; Unless required by applicable law or agreed to in writing,
-;;; software distributed under the License is distributed on an
-;;; "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-;;; KIND, either express or implied. See the License for the
-;;; specific language governing permissions and limitations
-;;; under the License.
+;;;; This file defines the abstract and metaclass definitions for the `org.apache.thrift` library.
+;;;;
+;;;; copyright 2010 [james anderson](james.anderson@setf.de)
+;;;;
+;;;; Licensed to the Apache Software Foundation (ASF) under one
+;;;; or more contributor license agreements. See the NOTICE file
+;;;; distributed with this work for additional information
+;;;; regarding copyright ownership. The ASF licenses this file
+;;;; to you under the Apache License, Version 2.0 (the
+;;;; "License"); you may not use this file except in compliance
+;;;; with the License. You may obtain a copy of the License at
+;;;;
+;;;;   http://www.apache.org/licenses/LICENSE-2.0
+;;;;
+;;;; Unless required by applicable law or agreed to in writing,
+;;;; software distributed under the License is distributed on an
+;;;; "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+;;;; KIND, either express or implied. See the License for the
+;;;; specific language governing permissions and limitations
+;;;; under the License.
 
 
 ;;; The thrift-class metaclass manages struct field definitions, which are used to generate
@@ -31,7 +29,6 @@
 ;;;
 ;;; The abstract metaclass is specialized as thrift-struct-class and thrift-exception-class
 ;;; to allow for different instantiation protocols for standard  objects and conditions.
-
 
 (defclass thrift-class (standard-class)
   ((identifier
@@ -58,8 +55,6 @@
  a standard exception class. The former sesrves to model the extended slot descrition, and the
  latter to make conditions."))
 
-
-
 (defclass thrift-object ()
   ()
   (:documentation "The abstract root class of all struct instances."))
@@ -76,7 +71,6 @@
     :reader field-definition-optional
     :documentation "To be used to suppress unbound slots when serializing.
      NYI, as the IDL translator does not provide the data.")))
-   
 
 (defclass direct-field-definition (field-definition c2mop:standard-direct-slot-definition)
   ((identifier-number  :initform (error "identifier-number is required."))
@@ -86,38 +80,6 @@
 (defclass effective-field-definition (field-definition c2mop:standard-effective-slot-definition)
   ((reader
     :reader field-definition-reader)))
-
-
-;;; the specialized generic function classes
-;;; now serve just to document the relation between the external identifier and the function
-;;; all information is compiled statically into the request/response function definitions.
-
-(defclass thrift-generic-function (standard-generic-function)
-  ((identifier
-    :initarg :identifier
-    :reader generic-function-identifier))
-  (:metaclass c2mop:funcallable-standard-class)
-  (:documentation "The abstract mixin for thrift interface operators which binds the external name."))
-
-
-(defclass thrift-request-function (thrift-generic-function)
-  ()
-  (:metaclass c2mop:funcallable-standard-class)
-  (:documentation "The class of thrift request operators. Each acts as a proxy for an external
- operator, encodes and manages the request/response exchange and returns the result value or signals
- an exception - as per the response message."))
-
-
-(defclass thrift-response-function (thrift-generic-function)
-  ((implementation-function
-    :initarg :implementation-function
-    :reader generic-function-implementation-function))
-  (:metaclass c2mop:funcallable-standard-class)
-  (:documentation "The class of thrift response operators. Each wraps the invocation of a base
- implemntation operator with a mechanism to decode the arguments for application, to encode
- the results as a 'reply' response message, and to catch exceptions and encode them as an
- 'exception' response message."))
-
 
 ;;;
 ;;; thrift-class operators
@@ -131,11 +93,9 @@
 (defmethod thrift:type-of ((value thrift-object))
   'struct)
 
-
 (defmethod make-instance ((class thrift-exception-class) &rest initargs)
   (declare (dynamic-extent initargs))
   (apply #'make-condition (class-condition-class class) initargs))
-
 
 (defgeneric find-thrift-class (name &optional errorp)
   (:documentation "Return a class registered by identifier name. If none is registered, if
@@ -153,14 +113,13 @@
           (errorp
            (error "thrift-class not found: ~s" name)))))
 
-
 (defgeneric (setf find-thrift-class) (class name)
   (:documentation "Register a classe according to identifier string. Given nil, delete the entry.")
 
   (:method ((object t) (identifier string))
     (warn "FIX ME: transform the identifier into a global name: ~s." identifier)
     (setf (find-thrift-class (str-sym identifier)) object))
-  
+
 
   (:method ((class thrift-class) (name symbol))
     (setf (gethash name *thrift-classes*) class))
@@ -168,10 +127,8 @@
   (:method ((class null) (name symbol))
     (remhash name *thrift-classes*)))
 
-
 (defmethod initialize-instance :after ((class thrift-class) &key (identifier (class-name class)))
   (initialize-class-identifier class identifier))
-
 
 (defmethod reinitialize-instance :after ((class thrift-class) &key identifier )
   (when identifier
@@ -180,12 +137,9 @@
 (defmethod initialize-instance :after ((class thrift-exception-class) &key condition-class)
   (initialize-class-condition-class class condition-class))
 
-
 (defmethod reinitialize-instance :after ((class thrift-exception-class) &key condition-class )
   (when condition-class
     (initialize-class-condition-class class condition-class)))
-
-
 
 (defun initialize-class-identifier (class identifier)
   (loop (etypecase identifier
@@ -207,7 +161,6 @@
           (cons
            (setf condition-class (first condition-class))))))
 
-
 (defgeneric class-identifier (class)
   (:documentation "Return the external name for the given class. Given a designator (the class name
  of an instance), delegate to the class. Given an external name (a string) return it.")
@@ -223,7 +176,7 @@
     (class-identifier (find-class class-name)))
   (:method ((identifier string))
     identifier))
-  
+
 ;;; 20110402 : lw does not allow for standard argument keys, thus the &allow-other-keys here
 (defmethod c2mop:direct-slot-definition-class ((class thrift-class) &key
                                                identifier (identifier-name identifier)
@@ -257,7 +210,6 @@
        (setf (slot-value sd 'optional) (some #'field-definition-optional direct-slots))))
     sd))
 
-
 (defgeneric field-definition-identifier (field-definition)
   (:method ((fd cl:list))
     ;; for use in macros
@@ -266,7 +218,6 @@
   (:method ((sd c2mop:slot-definition))
     "Provide a base method which returns nil to permit filtering all definitions."
     nil))
-
 
 (defgeneric field-definition-identifier-number (field-definition)
   (:method ((fd cl:list))
@@ -285,12 +236,10 @@
   (:method ((sd c2mop:slot-definition))
     "Provide a base method which returns nil to permit filtering all definitions."
     nil))
-  
 
 (defgeneric field-definition-initarg (field-definition)
   (:method ((sd c2mop:slot-definition))
     (first (c2mop:slot-definition-initargs sd))))
-
 
 (defgeneric field-definition-name (field-definition)
   (:method ((fd cl:list))
@@ -305,11 +254,9 @@
   (:method ((sd c2mop:slot-definition))
     (c2mop:slot-definition-name sd)))
 
-
 (defgeneric field-definition-reader (field-definition)
   (:method ((sd c2mop:direct-slot-definition))
     (first (c2mop:slot-definition-readers sd))))
-
 
 (defgeneric field-definition-type (field-definition)
   (:method ((fd cl:list))
@@ -330,18 +277,17 @@
                           'bool
                           literal-type))
                 (signed-byte (ecase (second literal-type)
-                               (8 'i08)
+                               (8 'i8)
                                (16 'i16)
                                (32 'i32)
                                (64 'i64)))
                 ((array vector) 'binary)
                 (t literal-type)))))))
 
-
 (defgeneric class-field-definitions (class)
   (:method ((class symbol))
     (class-field-definitions (find-class class)))
-  
+
   (:method ((class thrift-class))
     (unless (c2mop:class-finalized-p class)
       (c2mop:finalize-inheritance class))
@@ -364,7 +310,6 @@
       (class-field-definitions (cons-symbol (symbol-package (class-name class)) (class-name class) :-thrift-class))
       nil)))
 
-
 ;;;
 ;;; instantiation : provide specialized make- operators which use make-instance or make-condition
 ;;; as per metaclass type
@@ -380,7 +325,7 @@
 
   (:method ((class thrift-exception-class) &rest initargs)
     (declare (dynamic-extent initargs))
-    (apply #'make-condition class initargs)))
+    (apply #'make-condition (class-condition-class class) initargs)))
 
 (defgeneric struct-name (class)
   (:method ((class class))
@@ -389,13 +334,3 @@
     (class-name class))
   (:method ((class thrift-exception-class))
     (class-condition-class class)))
-
-
-;;;
-;;; exceptions
-
-(defmethod unknown-field ((class thrift-class) (name t) (id t) (type t) (value t))
-  "The default method for thrift classes does nothing, which is intended to leave the final
- disposition to the protocol."
-
-  nil)

@@ -1,12 +1,29 @@
-;;; -*- Mode: lisp; Syntax: ansi-common-lisp; Base: 10; Package: org.apache.thrift.implementation; -*-
+(in-package #:org.apache.thrift.implementation)
 
-(in-package :org.apache.thrift.implementation)
+;;;; This file defines the abstract '`protocol` layer for the `org.apache.thrift` library.
+;;;;
+;;;; copyright 2010 [james anderson](james.anderson@setf.de)
+;;;;
+;;;; Licensed to the Apache Software Foundation (ASF) under one
+;;;; or more contributor license agreements. See the NOTICE file
+;;;; distributed with this work for additional information
+;;;; regarding copyright ownership. The ASF licenses this file
+;;;; to you under the Apache License, Version 2.0 (the
+;;;; "License"); you may not use this file except in compliance
+;;;; with the License. You may obtain a copy of the License at
+;;;;
+;;;;   http://www.apache.org/licenses/LICENSE-2.0
+;;;;
+;;;; Unless required by applicable law or agreed to in writing,
+;;;; software distributed under the License is distributed on an
+;;;; "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+;;;; KIND, either express or implied. See the License for the
+;;;; specific language governing permissions and limitations
+;;;; under the License.
 
-;;; define a binary stream to wrap a vector for use in tests.
-;;; adapted from the cl-xml version to restrict i/o to unsigned byte operations.
-;;; this version uses a signed byte stream, as that's the basis of the thrift binary transport
-;;; 
-
+;;;; define a binary stream to wrap a vector for use in tests.
+;;;; adapted from the cl-xml version to restrict i/o to unsigned byte operations.
+;;;; this version uses a signed byte stream, as that's the basis of the thrift binary transport
 
 ;;;
 ;;; abstract
@@ -23,38 +40,20 @@
     :accessor stream-force-output-hook
     :documentation "A function of one argument, the stream, called as the
      base implementation of stream-force-output.")
-   #+(or CMU sbcl lispworks) (direction :initarg :direction)
-   )
+   (direction :initarg :direction))
   (:default-initargs
     #+CormanLisp :element-type #+CormanLisp 'character))
 
-(defClass vector-input-stream (vector-stream
-                               #+ALLEGRO excl::fundamental-binary-input-stream
-                               #+LispWorks stream:fundamental-stream
-                               #+(and MCL digitool) ccl::input-binary-stream
-                               #+(and MCL openmcl) fundamental-binary-input-stream
-                               #+CMU extensions:fundamental-binary-input-stream
-                               #+sbcl sb-gray:fundamental-binary-input-stream
-                               #+CormanLisp stream
-                               )
+(defclass vector-input-stream (vector-stream trivial-gray-streams:fundamental-binary-input-stream)
   ()
   (:default-initargs :direction :input))
 
-(defClass vector-output-stream (vector-stream
-                                #+ALLEGRO excl::fundamental-binary-output-stream
-                                #+LispWorks stream:fundamental-stream
-                                #+(and MCL digitool) ccl::output-binary-stream
-                                #+(and MCL openmcl) fundamental-binary-output-stream
-                                #+CMU extensions:fundamental-binary-output-stream
-                                #+sbcl sb-gray:fundamental-binary-output-stream
-                                #+CormanLisp stream
-                                )
+(defclass vector-output-stream (vector-stream trivial-gray-streams:fundamental-binary-output-stream)
   ()
   (:default-initargs :direction :output))
 
 (defclass vector-stream-transport (vector-input-stream vector-output-stream binary-transport)
   ((stream :initform nil)))
-
 
 (defun make-vector-stream-buffer (length &optional (type *binary-transport-element-type*))
   (make-array length :element-type type :initial-element 0))
@@ -167,9 +166,8 @@
                     byte))))
               stream))
 
-
 (defmethod stream-read-sequence ((stream vector-input-stream) (sequence vector)
-                                  #+mcl &key #-mcl &optional (start 0) (end nil))
+                                 start end &key)
   (unless end (setf end (length sequence)))
   (assert (typep start '(integer 0)))
   (assert (>= end start))
@@ -182,10 +180,8 @@
         (setf position new-position))
       new-position)))
 
-
 ;;;
 ;;; output
-
 
 (defmethod stream-write-byte ((stream vector-output-stream) (datum integer) &aux next)
   (with-slots (position vector) stream
@@ -196,7 +192,6 @@
     (setf (aref vector position)
           (logand #xff datum))
     (setf position next)))
-
 
 #+mcl
 (defmethod ccl:stream-tyo ((stream vector-output-stream) byte)
@@ -215,7 +210,7 @@
               stream))
 
 (defmethod stream-write-sequence ((stream vector-output-stream) (sequence vector)
-                                  #+mcl &key #-mcl &optional (start 0) (end nil))
+                                  start end &key)
   (unless end (setf end (length sequence)))
   (assert (typep start '(integer 0)))
   (assert (>= end start))

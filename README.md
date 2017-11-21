@@ -65,18 +65,25 @@ Building
 The Thrift Common Lisp library is packaged as the ASDF[[1]] system `thrift`.
 It depends on the systems
 
-* puri-ppcre[[2]] : for the thrift uri class
+* puri[[2]] : for the thrift uri class
 * closer-mop[[3]] : for class metadata
 * trivial-utf-8[[4]] : for string codecs
+* usocket[[5]] : for the socket transport
+* ieee-floats[[6]] : for conversion between ints and floats
+* trivial-gray-streams[[7]] : an abstraction layer for gray streams
+* alexandria[[8]] : handy utilities
 
-In order to build it, register those systems with ASDF and evaluate
+The dependencies are bundled for local builds of tests and tutorial binaries - 
+it is possible to use those bundles to load the library, too.
+
+In order to build it, register those systems with ASDF and evaluate:
 
     (asdf:load-system :thrift)
 
 This will compile and load the Lisp compiler for Thrift definition files, the
 transport and protocol implementations, and the client and server interface
 functions. In order to use Thrift in an application, one must also author and/or
-load the interface definitions for the remote service.[[5]] If one is implementing a service,
+load the interface definitions for the remote service.[[9]] If one is implementing a service,
 one must also define the actual functions to which Thrift is to act as the proxy
 interface. The remainder of this document follows the Thrift tutorial to illustrate how
 to perform the steps
@@ -95,29 +102,35 @@ Implement the Service
 ---------------------
 
 The tutorial comprises serveral functions: `add`, `ping`, `zip`, and `calculate`.
-Each translatd IDL corresponds to three packages. In this case, the packages
+Each translated IDL file generates three packages for every service. In the case of
+the tutorial file, the relevant packages are:
 
-  * :tutorial
-  * :tutorial-implementation
-  * :tutorial-response
+  * tutorial.calculator
+  * tutorial.calculator-implementation
+  * tutorial.calculator-response
+  
+This is to separate the request (generated), response (generated) and implementation
+(meant to be implemented by the programmer) functions for defined Thrift methods.
 
-The first package is for the service implementation.
+It is suggested to work in the `tutorial-implementation` package while implementing
+the services - it imports the `common-lisp` package, while the service-specific ones
+don't (to avoid conflicts between Thrift method names and function names in `common-lisp`).
 
     ;; define the base operations
     
     (in-package :tutorial-implementation)
     
-    (defun add ( num1 num2)
+    (defun tutorial.calculator-implementation:add (num1 num2)
       (format t "~&Asked to add ~A and ~A." num1 num2)
       (+ num1 num2))
     
-    (defun ping ()
+    (defun tutorial.calculator-implementation:ping ()
       (print :ping))
     
-    (defun zip ()
+    (defun tutorial.calculator-implementation:zip ()
       (print :zip))
     
-    (defun calculate (logid task)
+    (defun tutorial.calculator-implementation:calculate (logid task)
       (calculate-op (work-op task) (work-num1 task) (work-num2 task)))
     
     (defgeneric calculate-op (op arg1 arg2)
@@ -141,32 +154,22 @@ The first package is for the service implementation.
 Translate the Thrift IDL
 ------------------------
 
-IDL files employ the file type `thrift`. In this case, there are two files to translate
+IDL files employ the file extension `thrift`. In this case, there are two files to translate
   * `tutorial.thrift`
   * `shared.thrift`
 As the former includes the latter, one uses it to generate the interfaces:
 
-    $THRIFT/bin/thrift -O ./ --gen cl $THRIFT/tutorial/tutorial.thrift
-
-For the moment, the Lisp backend is present here as #P"THRIFT:compiler;cpp;src;generate;t_cl_generator.cc".
-In order to use it, copy that file into the analogous location in the Thrift release tree prior to
-making thrift.
+    $THRIFT/bin/thrift -r --gen cl $THRIFT/tutorial/tutorial.thrift
+    
+`-r` stands for recursion, while `--gen` lets one choose the language to translate to.
 
 
 Load the Lisp translated service interfaces
 -------------------------------------------
 
-The translator generates two files for each IDL file. For example `tutorial-types.lisp` and
-`tutorial-vars.lisp`. As the parameter definitions may istantiate objects defined in the `-types`
-file, the ASDF dependencies must reflect this constraint. For the tutorial, the system could be
-defined as
-
-    (asdf:defsystem :thrift-tutorial
-       :depends-on (:thrift)
-       :serial t
-       :components ((:file "tutorial")
-                    (:file "tutorial-types")
-                    (:file "tutorial-vars")))
+The translator generates three files for each IDL file. For example `tutorial-types.lisp`,
+`tutorial-vars.lisp` and an `.asd` file that can be used to load them both and pull in
+other includes (like `shared` within the tutorial) as dependencies.
 
 
 Run a Server for the Service
@@ -189,39 +192,28 @@ Use a Client to Access the Service Remotely
 [in some other process] run the client
 
     (in-package :cl-user)
-    (use-package :tutorial-request)
 
     (macrolet ((show (form)
                  `(format *trace-output* "~%~s =>~{ ~s~}"
                           ',form
                           (multiple-value-list (ignore-errors ,form)))))
       (with-client (protocol #u"thrift://127.0.0.1:9091")
-        (show (ping protocol))
-        (show (add protocol 1 2))
-        (show (add protocol 1 4))
+        (show (tutorial.calculator:ping protocol))
+        (show (tutorial.calculator:add protocol 1 2))
+        (show (tutorial.calculator:add protocol 1 4))
     
-        (show (shared:get-struct protocol 1))
-    
-        (let ((task (make-instance 'work
+        (let ((task (make-instance 'tutorial:work
                       :op operation.subtract :num1 15 :num2 10)))
-          (show (calculate protocol task))
+          (show (tutorial.calculator:calculate protocol 1 task))
         
-          (setf (work-op task) operation.divide
-                (work-num1 task) 1
-                (work-num2 task) 0)
-          (show (calculate protocol task)))
+          (setf (tutorial:work-op task) operation.divide
+                (tutorial:work-num1 task) 1
+                (tutorial:work-num2 task) 0)
+          (show (tutorial.calculator:calculate protocol 1 task)))
+        
+        (show (shared.shared-service:get-struct protocol 1))
     
         (show (zip protocol))))
-    
-
-Status
-======
-
-The initial library version serves as an interface to Cassandra[[6]] in order to provide access to
-Datagraph's Cassandra-based RDF store[[7]]. The code evolved from an initial version which had been
-submitted to Thift in 2008[[8]].
-
-A demonstration of access through the Cassandra API is among the READMES[[9]].
 
 Issues
 ------
@@ -231,17 +223,6 @@ Issues
  initform for the slot and the encoding operator skips an unbound slot. This leave some ambiguity
  with bool fields.
 
-### namespace - package equivalence
- The IDL specifies a single namespace. The Lisp binding uses
- three: the implementation, the request interface, and the response interface.
- The current pattern is:
-
-  * _namespace_ : request proxy function, structure types and accessors, exception types,
-    enum types, constants; use `:thrift`
-  * _namespace_`-implementation` : implementation function, use `:thrift`, use _namespace_, but
-    shadow all implementation function names.
-  * _namespace_`-response` : response functions
-
 ### instantiation protocol :
  struct classes are standard classes and exception classes are
  whatever the implementation prescribes. decoders apply make-struct to an initargs list.
@@ -249,7 +230,6 @@ Issues
  with direct side-effects on slot-values
 
 ### maps:
-
  Maps are now represented as hash tables. As data through the call/reply interface is all statically
  typed, it is not necessary for the objects to themselves indicate the coding form. Association lists
  would be sufficient. As the key type is arbitrary, property lists offer no additional convenience:
@@ -261,8 +241,13 @@ Issues
  [2]: http://github.com/lisp/com.b9.puri.ppcre
  [3]: www.common-lisp.net/closer-mop
  [4]: trivial-utf-8
- [5]: http://wiki.apache.org/thrift/ThriftGeneration
- [6]: http://wiki.apache.org/cassandra/FrontPage
- [7]: http://github.com/bendiken/rdf-cassandra
- [8]: http://markmail.org/thread/4tfa3zbweyg2qwne: thrift jira lisp issue
- [9]: ./READMES/readme-cassandra.lisp
+ [5]: https://github.com/usocket/usocket
+ [6]: https://github.com/marijnh/ieee-floats
+ [7]: https://github.com/trivial-gray-streams/trivial-gray-streams
+ [8]: https://gitlab.common-lisp.net/alexandria/alexandria
+ [9]: http://wiki.apache.org/thrift/ThriftGeneration
+
+* usocket[[5]] : for the socket transport
+* ieee-floats[[6]] : for conversion between ints and floats
+* trivial-gray-streams[[7]] : an abstraction layer for gray streams
+* alexandria[[8]] : handy utilities

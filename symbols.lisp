@@ -1,47 +1,40 @@
-;;; -*- Mode: lisp; Syntax: ansi-common-lisp; Base: 10; Package: org.apache.thrift.implementation; -*-
+(in-package #:org.apache.thrift.implementation)
 
-(in-package :org.apache.thrift.implementation)
+;;;; This file defines symbols construction operators for the `org.apache.thrift` library.
+;;;;
+;;;; copyright 2010 [james anderson](james.anderson@setf.de)
+;;;;
+;;;; Licensed to the Apache Software Foundation (ASF) under one
+;;;; or more contributor license agreements. See the NOTICE file
+;;;; distributed with this work for additional information
+;;;; regarding copyright ownership. The ASF licenses this file
+;;;; to you under the Apache License, Version 2.0 (the
+;;;; "License"); you may not use this file except in compliance
+;;;; with the License. You may obtain a copy of the License at
+;;;;
+;;;;   http://www.apache.org/licenses/LICENSE-2.0
+;;;;
+;;;; Unless required by applicable law or agreed to in writing,
+;;;; software distributed under the License is distributed on an
+;;;; "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+;;;; KIND, either express or implied. See the License for the
+;;;; specific language governing permissions and limitations
+;;;; under the License.
 
-;;; This file defines symbols construction operators for the `org.apache.thrift` library.
-;;;
-;;; copyright 2010 [james anderson](james.anderson@setf.de)
-;;;
-;;; Licensed to the Apache Software Foundation (ASF) under one
-;;; or more contributor license agreements. See the NOTICE file
-;;; distributed with this work for additional information
-;;; regarding copyright ownership. The ASF licenses this file
-;;; to you under the Apache License, Version 2.0 (the
-;;; "License"); you may not use this file except in compliance
-;;; with the License. You may obtain a copy of the License at
-;;; 
-;;;   http://www.apache.org/licenses/LICENSE-2.0
-;;; 
-;;; Unless required by applicable law or agreed to in writing,
-;;; software distributed under the License is distributed on an
-;;; "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-;;; KIND, either express or implied. See the License for the
-;;; specific language governing permissions and limitations
-;;; under the License.
-
-;;; The IDL translator emits definition forms which retain the original identifer
-;;; strings. These operators perform symbol name canonicalization, and symbol construction.
-;;; They are used at compile-time by the IDL macros to construct symbols for classes, fields,
-;;; and methods. Cross-references between namespaces are implemented as prefixed identifiers.
-;;; The resective operators cache the original identifiers in metaobjects for use at run-time
-;;; to decode/encode messages.
+;;;; The IDL translator emits definition forms which retain the original identifer
+;;;; strings. These operators perform symbol name canonicalization, and symbol construction.
+;;;; They are used at compile-time by the IDL macros to construct symbols for classes, fields,
+;;;; and methods. Cross-references between namespaces are implemented as prefixed identifiers.
+;;;; The resective operators cache the original identifiers in metaobjects for use at run-time
+;;;; to decode/encode messages.
 
 
 (eval-when (:compile-toplevel :load-toplevel :execute)          ; for batch compilation
+  (defun %pkg-name (service suffix)
+    (alexandria:symbolicate (package-name *package*) #\. service suffix))
 
-  (defun implementation-package ()
-    (let ((package (concatenate 'string (package-name *package*) (string :-implementation))))
-      (or (find-package package)
-          (make-package package :use nil))))
-  
-  (defun response-package ()
-    (let ((package (concatenate 'string (package-name *package*) (string :-response))))
-      (or (find-package package)
-          (make-package package :use nil))))
+  (defun response-package (service-name)
+    (find-package (%pkg-name service-name "-RESPONSE")))
 
   (defun canonicalize-name (string)
     "Replace a camel-case pattern with lower case and '-' separation."
@@ -65,12 +58,12 @@
                                 (setf case :lower)
                                 (vector-push-extend c result))))))
       (subseq result 0)))
-  
+
   (defun cons-symbol (package &rest args)
     "Construct a symbol given string designators. If package is null, the symbol is
  a new, uninterned symbol."
     (declare (dynamic-extent args))
-    
+
     (flet ((element-length (element)
              (if element (length (string element)) 0)))
       (declare (dynamic-extent #'element-length))
@@ -102,7 +95,7 @@
           (or (find-symbol name package)
               (intern (copy-seq name) package))
           (make-symbol (copy-seq name))))))
-  
+
   (defun str-sym (&rest strs)
     "Given a sequence of symbol name consititents, construct a symbol observing current
  reader case settings. By default intern the symbol in the current *package*.
@@ -119,23 +112,14 @@
             (apply #'cons-symbol (cons-symbol :keyword (subseq first 0 colon))
                    (subseq first (1+ colon)) strs)
             (apply #'cons-symbol *package* first strs))))))
-  
-  ;;; (assert (equal (list (str-sym "keyword:a") (str-sym "keyword:" "a") (str-sym "a" "sdf")) '(:a :a thrift-generated::asdf)))
-  
-  (defun implementation-str-sym (&rest identifiers)
-    (let* ((*package* (implementation-package))
-           (sym (apply #'str-sym identifiers)))
-      (export sym *package*)
-      sym))
 
-  (defun response-str-sym (&rest identifiers)
-    (let* ((*package* (response-package))
-           (sym (apply #'str-sym identifiers)))
+  ;;; (assert (equal (list (str-sym "keyword:a") (str-sym "keyword:" "a") (str-sym "a" "sdf")) '(:a :a thrift-generated::asdf)))
+
+  (defun response-str-sym (service-identifier method-identifier)
+    (let* ((*package* (response-package (str-sym service-identifier)))
+           (sym (str-sym method-identifier)))
       (export sym *package*)
       sym))
-  
-  (defun strs-syms (strs &key (key #'identity))
-    (mapcar #'str-sym (mapcar key strs)))
 
   (defmacro with-gensyms (syms &body b)
     `(let ,(mapcar #'(lambda (s) `(,s (gensym ,(string s)))) syms)
@@ -162,5 +146,4 @@
 
   (defun str (&rest args)
     (declare (dynamic-extent args))
-    (apply #'concatenate 'string args))
-  )
+    (apply #'concatenate 'string args)))
