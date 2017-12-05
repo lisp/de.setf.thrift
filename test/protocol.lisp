@@ -1,166 +1,174 @@
-;;; -*- Mode: lisp; Syntax: ansi-common-lisp; Base: 10; Package: thrift-test; -*-
+;;;; Copyright 2010 James Anderson <james.anderson@setf.de>
+;;;;
+;;;; Licensed under the Apache License, Version 2.0 (the "License");
+;;;; you may not use this file except in compliance with the License.
+;;;; You may obtain a copy of the License at
+;;;;
+;;;;     http://www.apache.org/licenses/LICENSE-2.0
+;;;;
+;;;; Unless required by applicable law or agreed to in writing, software
+;;;; distributed under the License is distributed on an "AS IS" BASIS,
+;;;; WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+;;;; See the License for the specific language governing permissions and
+;;;; limitations under the License.
 
-(in-package :thrift-test)
+;;;; Tests for transport operations.
 
-;;; tests for transport operations
-;;; (run-tests "protocol.*")
+(fiasco:define-test-package (#:protocol-tests :in thrift-test:thrift-self-tests)
+  (:use #:thrift-test-utils))
 
+(in-package #:protocol-tests)
 
 (defvar *string-w/euro* (cl:map 'string #'code-char '(48 46 57 57 57 8364)))
 
-(test protocol.open-stream-p
-  (open-stream-p (make-test-transport)))
+(deftest open-stream-p-test ()
+  (is (open-stream-p (make-test-transport))))
 
 (defun test-read-write-equivalence (protocol reader writer &rest values)
-  (let ((transport (protocol-output-transport protocol)))
+  (let ((transport (thrift:protocol-output-transport protocol)))
     (dolist (value values t)
       (reset protocol)
       (funcall writer protocol value)
       (rewind protocol)
       (let ((read (funcall reader protocol)))
         (unless (equalp read value)
-        (format *trace-output* "failed: ~a/~a ~s ~s ~s"
-                reader writer value read (subseq (get-vector-stream-vector transport) 0 (stream-position transport)))
-        (return nil))))))
+          (format *trace-output*
+                  "failed: ~a/~a ~s ~s ~s"
+                  reader
+                  writer
+                  value
+                  read
+                  (subseq (thrift.implementation::get-vector-stream-vector transport)
+                          0
+                          (thrift.implementation::stream-position transport)))
+          (return nil))))))
 
-
-;;;
-
-(test protocol.stream-read/write-integer
+(deftest write-integer-test ()
   (let ((stream (make-test-protocol)))
-    (every #'(lambda (entry)
-               (apply #'test-read-write-equivalence stream entry))
-           `((stream-read-bool stream-write-bool t nil)
-             (stream-read-type stream-write-type thrift:byte thrift:map thrift:list thrift:set struct)
-             (stream-read-message-type stream-write-message-type call)
-             (stream-read-i08 stream-write-i08 ,(- (expt 2 7))  -1 0 1 ,(1- (expt 2 7)))
-             (stream-read-i16 stream-write-i16 ,(- (expt 2 15))  -1 0 1 ,(1- #x70f0) ,(1- (expt 2 15)))
-             (stream-read-i32 stream-write-i32 ,(- (expt 2 31))  -1 0 1 ,(1- #x7700ff00) ,(1- (expt 2 31)))
-             (stream-read-i64 stream-write-i64 ,(- (expt 2 63))  -1 0 1 ,(1- #x77770000ffff0000) ,(1- (expt 2 63)))))))
+    (is (every #'(lambda (entry)
+                   (apply #'test-read-write-equivalence stream entry))
+               `((thrift:stream-read-bool thrift:stream-write-bool t nil)
+                 ;; `thift:byte' is encoded the same in the protocol as i8,
+                 ;; so it will be read back as i8. There is no good way
+                 ;; around that, but these types are equivalent according
+                 ;; to spec and `thrift:byte' is deprecated.
+                 (thrift:stream-read-type thrift:stream-write-type ;thrift:byte
+                                          thrift:map thrift:list thrift:set thrift:struct)
+                 (thrift:stream-read-message-type thrift:stream-write-message-type thrift:call)
+                 (thrift:stream-read-i8 thrift:stream-write-i8 ,(- (expt 2 7))  -1 0 1 ,(1- (expt 2 7)))
+                 (thrift:stream-read-i16 thrift:stream-write-i16 ,(- (expt 2 15))  -1 0 1 ,(1- #x70f0) ,(1- (expt 2 15)))
+                 (thrift:stream-read-i32 thrift:stream-write-i32 ,(- (expt 2 31))  -1 0 1 ,(1- #x7700ff00) ,(1- (expt 2 31)))
+                 (thrift:stream-read-i64 thrift:stream-write-i64 ,(- (expt 2 63))  -1 0 1 ,(1- #x77770000ffff0000) ,(1- (expt 2 63))))))))
 
-
-(test protocol.stream-read/write-double
+(deftest write-double-test ()
   (let ((stream (make-test-protocol)))
-    (every #'(lambda (entry)
-               (apply #'test-read-write-equivalence stream entry))
-           `((stream-read-double stream-write-double
-              ,most-negative-double-float ,least-negative-double-float
-              ,most-positive-double-float ,least-positive-double-float
-              0.0d0 1.0d0 -1.0d0)))))
+    (is (every #'(lambda (entry)
+                   (apply #'test-read-write-equivalence stream entry))
+               `((thrift:stream-read-double thrift:stream-write-double
+                                            ,most-negative-double-float ,least-negative-double-float
+                                            ,most-positive-double-float ,least-positive-double-float
+                                            0.0d0 1.0d0 -1.0d0))))))
 
-
-(test protocol.stream-read/write-string
+(deftest write-string-test ()
   (let ((stream (make-test-protocol)))
-    (every #'(lambda (entry)
-               (apply #'test-read-write-equivalence stream entry))
-           `((stream-read-string stream-write-string "a" "0123456789" ,*string-w/euro*)))))
+    (is (every #'(lambda (entry)
+                   (apply #'test-read-write-equivalence stream entry))
+               `((thrift:stream-read-string thrift:stream-write-string "a" "0123456789" ,*string-w/euro*))))))
 
-
-(test protocol.stream-read/write-binary
+(deftest write-binary-test ()
   (let ((stream (make-test-protocol)))
-    (every #'(lambda (entry)
-               (apply #'test-read-write-equivalence stream entry))
-           ;; presuming (unsigned-bte 8)
-           `((stream-read-binary stream-write-binary #( 0 1 255))))))
+    (is (every #'(lambda (entry)
+                   (apply #'test-read-write-equivalence stream entry))
+               ;; presuming (unsigned-byte 8)
+               `((thrift:stream-read-binary thrift:stream-write-binary #( 0 1 255)))))))
 
-
-(test protocol.stream-read/write-message
-  (let ((struct (make-instance 'test-struct :field1 "one" :field2 2))
+(deftest write-message-test ()
+  (let ((struct (make-test-struct :field-one "one" :field-two 2))
         (stream (make-test-protocol)))
-    (stream-write-message stream struct 'call)
-    (rewind stream) 
-    (multiple-value-bind (name type sequence response)
-                         (stream-read-message stream)
-      (and (equal name 'test-struct)
-           (eq type 'call)
-           (eql sequence 1)
-           (typep response 'test-struct)
-           (equal (test-struct-field1 response) "one")
-           (equal (test-struct-field2 response) 2)))))
+    (thrift:stream-write-message stream struct 'thrift:call)
+    (rewind stream)
+    (multiple-value-bind (name type sequence)
+        (thrift:stream-read-message-begin stream)
+      (let ((response (thrift:stream-read-struct stream 'test-struct)))
+        (is (string= name "TestStruct"))
+        (is (eq type 'thrift:call))
+        (is (eql sequence 1))
+        (is (typep response 'test-struct))
+        (is (equal (test-struct-field-one response) "one"))
+        (is (equal (test-struct-field-two response) 2))))))
 
-
-(test protocol.stream-read/write-struct
-  (let ((struct (make-instance 'test-struct :field1 "one" :field2 2))
+(deftest write-struct-test ()
+  (let ((struct (make-test-struct :field-one "one" :field-two 2))
         (stream (make-test-protocol)))
-    (stream-write-struct stream struct)
+    (thrift:stream-write-struct stream struct)
     (rewind stream)
     (let* ((type 'test-struct)
-           (result (stream-read-struct stream type)))
-      (and (typep result 'test-struct)
-           (equal (test-struct-field1 result) "one")
-           (equal (test-struct-field2 result) 2)))))
-;;; (run-tests "protocol.stream-read/write-struct")
+           (result (thrift:stream-read-struct stream type)))
+      (is (typep result 'test-struct))
+      (is (equal (test-struct-field-one result) "one"))
+      (is (equal (test-struct-field-two result) 2)))))
 
-(test protocol.stream-read/write-struct.inline
-  (let ((struct (make-instance 'test-struct :field1 "one" :field2 2))
+(deftest write-struct.inline ()
+  (let ((struct (make-test-struct :field-one "one" :field-two 2))
         (stream (make-test-protocol)))
-    (stream-write-struct stream struct 'test-struct)
+    (thrift:stream-write-struct stream struct 'test-struct)
     (rewind stream)
-    (let ((result (stream-read-struct stream 'test-struct)))
-      (and (typep result 'test-struct)
-           (equal (test-struct-field1 result) "one")
-           (equal (test-struct-field2 result) 2)))))
-;;; (run-tests "protocol.stream-read/write-struct.inline")
+    (let ((result (thrift:stream-read-struct stream 'test-struct)))
+      (is (typep result 'test-struct))
+      (is (equal (test-struct-field-one result) "one"))
+      (is (equal (test-struct-field-two result) 2)))))
 
-
-(test protocol.stream-read/write-struct.optional
-  (let ((struct (make-instance 'test-large-struct :field1 1 :field2 2))
+(deftest write-struct.optional ()
+  (let ((struct (make-instance 'test-large-struct :field-one 1 :field-two 2))
         (stream (make-test-protocol)))
-    (assert (not (slot-boundp struct 'field3)))
-    (stream-write-struct stream struct 'test-large-struct)
+    (assert (not (slot-boundp struct 'field-three)))
+    (thrift:stream-write-struct stream struct 'test-large-struct)
     (rewind stream)
-    (let ((result (stream-read-struct stream 'test-large-struct)))
-      (and (typep result 'test-large-struct)
-           (not (slot-boundp result 'field3))
-           (equal (test-struct-field1 result) 1)
-           (equal (test-struct-field2 result) 2)))))
+    (let ((result (thrift:stream-read-struct stream 'test-large-struct)))
+      (is (typep result 'test-large-struct))
+      (is (not (slot-boundp result 'field-three)))
+      (is (equal (test-large-struct-field-one result) 1))
+      (is (equal (test-large-struct-field-two result) 2)))))
 
-
-(test protocol.stream-read/write-field
+(deftest write-field-test ()
   (let ((stream (make-test-protocol)))
-    (every #'(lambda (entry)
-               (apply #'test-read-write-equivalence stream entry))
-           `((,(lambda (p) (multiple-value-bind (value name id)
-                                                (stream-read-field p)
-                             (when (ecase (protocol-field-id-mode stream)
-                                     (:identifier-name (and (equal name "test") (null id)))
-                                     (:identifier-number (and (null name) (equal id 10))))
-                               value)))
-              ,(lambda (p v) (stream-write-field p v :identifier-name "test" :identifier-number 10))
-              "a" "0123456789" ,*string-w/euro*)))))
+    (is (every #'(lambda (entry)
+                   (apply #'test-read-write-equivalence stream entry))
+               `((,(lambda (p) (multiple-value-bind (value name id)
+                                   (thrift:stream-read-field p)
+                                 (when (ecase (thrift:protocol-field-id-mode stream)
+                                         (:identifier-name (and (equal name "test") (null id)))
+                                         (:identifier-number (and (null name) (equal id 10))))
+                                   value)))
+                   ,(lambda (p v) (thrift:stream-write-field p v :identifier-name "test" :identifier-number 10))
+                   "a" "0123456789" ,*string-w/euro*))))))
 
-
-(test protocol.stream-read/write-map
+(deftest write-map-test ()
   (let ((stream (make-test-protocol)))
-    (every #'(lambda (entry)
-               (apply #'test-read-write-equivalence stream entry))
-           `((stream-read-map stream-write-map ,(thrift:map 1 "a" 2 "b"))))))
-;;; (run-tests "protocol.stream-read/write-map")
+    (is (every #'(lambda (entry)
+                   (apply #'test-read-write-equivalence stream entry))
+               `((thrift:stream-read-map thrift:stream-write-map ,(thrift:map 1 "a" 2 "b")))))))
 
-
-
-(test protocol.stream-read/write-list
+(deftest write-list-test ()
   (let ((stream (make-test-protocol)))
-    (every #'(lambda (entry)
-               (apply #'test-read-write-equivalence stream entry))
-           `((stream-read-list stream-write-list
-                               (t nil) (1 2 3) (32767 1 -1 -32768)
-                               (,(expt 2 33) ,(- (expt 2 33)))
-                               ("asdf" ,*string-w/euro*)
-                               ;; no test for binary ! there is no type code
-                               ;; and the java and cpp versions just send it as a string
-                               ;; (#(1 2 3) #(4 5 6))
-                               (1.0d0 -1.0d0)
-                               (,(thrift:map 1 "a" 2 "b")))))))
+    (is (every #'(lambda (entry)
+                   (apply #'test-read-write-equivalence stream entry))
+               `((thrift:stream-read-list thrift:stream-write-list
+                                          (t nil) (1 2 3) (32767 1 -1 -32768)
+                                          (,(expt 2 33) ,(- (expt 2 33)))
+                                          ("asdf" ,*string-w/euro*)
+                                          ;; no test for binary ! there is no type code
+                                          ;; and the java and cpp versions just send it as a string
+                                          ;; (#(1 2 3) #(4 5 6))
+                                          (1.0d0 -1.0d0)
+                                          (,(thrift:map 1 "a" 2 "b"))))))))
 
-
-(test protocol.stream-read/write-set
+(deftest write-set-test ()
   (let ((stream (make-test-protocol)))
-    (every #'(lambda (entry)
-               (apply #'test-read-write-equivalence stream entry))
-           `((stream-read-set stream-write-set
-                               (t nil) (1 2 3) (32767 1 -1 -32768))))))
-
+    (is (every #'(lambda (entry)
+                   (apply #'test-read-write-equivalence stream entry))
+               `((thrift:stream-read-set thrift:stream-write-set
+                                         (t nil) (1 2 3) (32767 1 -1 -32768)))))))
 
 #+(or ccl sbcl)
 (defun time-struct-io (&optional (count 1024))
@@ -190,31 +198,30 @@
                     (bytes (gcbytes)))
                 (dotimes (i count)
                   (rewind stream)
-                  (stream-write-struct stream struct)
+                  (thrift:stream-write-struct stream struct)
                   (rewind stream)
-                  (stream-read-struct stream))
+                  (thrift:stream-read-struct stream))
                 (setf dynamic-time (- (get-internal-run-time) time)
                       dynamic-bytes (- (gcbytes) bytes)))
               (let ((time (get-internal-run-time))
                     (bytes (gcbytes)))
                 (dotimes (i count)
                   (rewind stream)
-                  (stream-write-struct stream struct 'test-large-struct)
+                  (thrift:stream-write-struct stream struct 'test-large-struct)
                   (rewind stream)
-                  (stream-read-struct stream 'test-large-struct))
+                  (thrift:stream-read-struct stream 'test-large-struct))
                 (setf static-time (- (get-internal-run-time) time)
                       static-bytes (- (gcbytes) bytes)))
               (let ((time (get-internal-run-time))
                     (bytes (gcbytes)))
                 (dotimes (i count)
                   (rewind stream)
-                  (stream-write-struct stream struct 'test-large-struct)
+                  (thrift:stream-write-struct stream struct 'test-large-struct)
                   (rewind stream)
-                  (stream-read-struct stream 'test-large-struct result))
+                  (thrift:stream-read-struct stream 'test-large-struct result))
                 (setf static-with-time (- (get-internal-run-time) time)
                       static-with-bytes (- (gcbytes) bytes)))
               (format *trace-output* "~%~d,~10T~d,~20T~d,~36T~d,~52T~d,~68T~d,~84T~d,~100T~d"
                       slot-count bound-count
                       dynamic-time static-time static-with-time
                       dynamic-bytes static-bytes static-with-bytes))))))
-;;; (time-struct-io)

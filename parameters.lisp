@@ -1,40 +1,37 @@
-;;; -*- Mode: lisp; Syntax: ansi-common-lisp; Base: 10; Package: org.apache.thrift.implementation; -*-
+(in-package #:org.apache.thrift.implementation)
 
-(in-package :org.apache.thrift.implementation)
-
-;;; This file defines global variables for the `org.apache.thrift` library.
-;;;
-;;; copyright 2010 [james anderson](james.anderson@setf.de)
-;;;
-;;; Licensed to the Apache Software Foundation (ASF) under one
-;;; or more contributor license agreements. See the NOTICE file
-;;; distributed with this work for additional information
-;;; regarding copyright ownership. The ASF licenses this file
-;;; to you under the Apache License, Version 2.0 (the
-;;; "License"); you may not use this file except in compliance
-;;; with the License. You may obtain a copy of the License at
-;;; 
-;;;   http://www.apache.org/licenses/LICENSE-2.0
-;;; 
-;;; Unless required by applicable law or agreed to in writing,
-;;; software distributed under the License is distributed on an
-;;; "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-;;; KIND, either express or implied. See the License for the
-;;; specific language governing permissions and limitations
-;;; under the License.
-
+;;;; This file defines global variables for the `org.apache.thrift` library.
+;;;;
+;;;; copyright 2010 [james anderson](james.anderson@setf.de)
+;;;;
+;;;; Licensed to the Apache Software Foundation (ASF) under one
+;;;; or more contributor license agreements. See the NOTICE file
+;;;; distributed with this work for additional information
+;;;; regarding copyright ownership. The ASF licenses this file
+;;;; to you under the Apache License, Version 2.0 (the
+;;;; "License"); you may not use this file except in compliance
+;;;; with the License. You may obtain a copy of the License at
+;;;;
+;;;;   http://www.apache.org/licenses/LICENSE-2.0
+;;;;
+;;;; Unless required by applicable law or agreed to in writing,
+;;;; software distributed under the License is distributed on an
+;;;; "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+;;;; KIND, either express or implied. See the License for the
+;;;; specific language governing permissions and limitations
+;;;; under the License.
 
 (defparameter *binary-transport-types*
   '((stop . 0)
     (void . 1)
     (bool . 2)
+    (i8  . 3)
     (thrift:byte . 3)
-    (i08  . 3)
     (double . 4)
     (thrift:float . 5)                         ; this is not standard
     (i16 . 6)
-    (enum . 6)
     (i32 . 8)
+    (enum . 8)
     (u64 . 9)
     (i64 . 10)
     (string . 11)
@@ -46,7 +43,6 @@
     (thrift:list . 15)
     (utf8 . 16)
     (utf16 . 17)))
-
 
 (defparameter *binary-message-types*
   '((call . 1)
@@ -60,7 +56,7 @@
     (void . null)
     (bool . symbol)
     (thrift:byte . fixnum)
-    (i08  . fixnum)
+    (i8  . fixnum)
     (double . float)
     (i16 . fixnum)
     (enum . fixnum)
@@ -103,8 +99,8 @@
 
 (defparameter *response-exception-type* 'response-exception)
 
-;;; the thrfit class registry binds class names (_not identifiers_) to either the
-;;; 
+;;; the thrift class registry binds class names (_not identifiers_) to either the
+;;;
 (defvar *thrift-classes* (make-hash-table :test 'eq)
   "Registers defined struct classes. This includes
 
@@ -121,10 +117,8 @@
  guide code operation and/or generation. Instantiation delegates to the actual condition class.
  (see make-struct.)")
 
-
 ;;;
 ;;; floating point support
-
 
 #+mcl
 (unless (boundp 'double-float-positive-infinity)
@@ -135,7 +129,7 @@
           (ccl::set-fpu-mode :division-by-zero nil)
           (funcall '/ 0d0))
         (ccl::set-fpu-mode :division-by-zero t)))
-    
+
     (defconstant double-float-negative-infinity
       (unwind-protect
         (progn
@@ -161,7 +155,7 @@
           (ccl::set-fpu-mode :division-by-zero nil)
           (funcall '/ 0s0))
         (ccl::set-fpu-mode :division-by-zero t)))
-    
+
     (defconstant single-float-negative-infinity
       (unwind-protect
         (progn
@@ -194,5 +188,4 @@
   (defconstant single-float-negative-infinity (coerce system::*minus-infinity-double* 'single-float))
 
   (defconstant single-float-nan (+ single-float-positive-infinity single-float-negative-infinity))
-  (defconstant double-float-nan (+ double-float-positive-infinity double-float-negative-infinity))
-  )
+  (defconstant double-float-nan (+ double-float-positive-infinity double-float-negative-infinity)))
